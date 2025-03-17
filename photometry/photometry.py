@@ -203,7 +203,6 @@ class Detector:
         # Add dark current
         base_dark_current = self.dark_current * self.t + self.cic # [e-/pxl]
         expected_counts = expected_counts + base_dark_current
-
         # add gain for emccd -- reference: https://github.com/nasa-jpl/lowfssim/blob/a76d89e3e6c5286674da490492ccc59f5b754965/lowfsc/emccd.py#L201
         # and https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0053671#pone.0053671-Basden1 (Eqn 16)
         k = expected_counts
@@ -219,10 +218,12 @@ class Detector:
 
         # if noise > fwc, set to fwc
         with_noise[with_noise > self.fwc] = self.fwc
+        with_noise /= self.conversion_gain  # [ADU]
 
-        with_noise /= self.conversion_gain # [ADU]
+        # Get just background counts
+        C_b = (with_noise - N) / self.gain # (total counts - planet counts) * t = background counts * t
 
-        return with_noise
+        return with_noise, N, C_b
     
     def noise_distribution(self, detected_rate, dist_size=1e5):
         '''
@@ -384,6 +385,28 @@ def separate_xyzs(xyzs_array):
     
     return xs, ys, zs
 
+def calc_SNR(C_p, C_b):
+    '''
+    Calculate SNR given planet counts per integration time and 
+    background counts per integration time
+
+    Parameters
+    ----------
+    C_p : numpy.float64
+        Planet counts * integration time
+    C_b : numpy.float64
+        Background counts * integration time
+
+    Returns
+    -------
+    SNR
+        signal-to-noise ratio for a given detection
+    '''
+    C_noise = np.sqrt( C_p + (2 * C_b) ) # noise counts
+    SNR = C_p / C_noise
+    return SNR
+
+
 def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector): # TODO: rename function to something like "simulate_noisy_detection" ?
     '''
     Generates noisy planet detections.
@@ -431,14 +454,22 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
         # ----------- Calculate phase and intensity information -----------
         phases, phase_func, fpfs, photon_rates = get_planet_count_rate(Planet, Star, Detector, xs=xs, 
                                                                        ys=ys, zs=zs)
-        
+        print('phases: ', phases)
+        print('photon_rates: ', photon_rates)
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_rates)
 
         # ----------- Calculate noisy detections ---------
-        noisy_counts = [Detector.add_noise(rate) for rate in photon_rates]
+        noisy_counts, SNRs = [], []
+        for rate in photon_rates:
+            noisy_count, C_p, C_b = Detector.add_noise(rate) # noisy count per detection, planet count rate * integration time, bkgd count rate * int. time
+            noisy_counts.append(noisy_count)
+            # calculate SNR of detection
+            SNR = calc_SNR(C_p, C_b)
+            SNRs.append(SNR)
+            print('SNR: ', SNR)
+
         noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
         noisy_counts_sys.append(noisy_counts[0]) 
         
-    return noisy_counts_sys, photon_rates_sys  
-
+    return noisy_counts_sys, photon_rates_sys, SNRs
