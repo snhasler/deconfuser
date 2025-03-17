@@ -467,7 +467,6 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
             # calculate SNR of detection
             SNR = calc_SNR(C_p, C_b)
             SNRs.append(SNR)
-            print('SNR: ', SNR)
 
         noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
         noisy_counts_sys.append(noisy_counts[0]) 
