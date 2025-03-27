@@ -183,7 +183,7 @@ class Detector:
         self.stability_constant = stability_constant
 
         self.calc_FWHM(self.wavelength, self.D)
-        
+
     def calc_FWHM(self, wavelength, D):
         '''
         Estimate the FWHM of a telescope system given the observing
@@ -199,11 +199,11 @@ class Detector:
         Returns
         -------
         float
-            estimated FWHM in mas
+            estimated FWHM in arcseconds
         '''
         FWHM_rad = (1.029 * u.rad) * (wavelength / D) 
-        FWHM_mas = FWHM_rad.to(u.arcsecond).value * 1000
-        self.FWHM = FWHM_mas 
+        FWHM_as = FWHM_rad.to(u.arcsecond).value 
+        self.FWHM = FWHM_as 
 
     def add_noise(self, detected_rate):
         '''
@@ -334,10 +334,6 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         Value of planet count rate at each planet location.
 
     '''
-    # Set constants
-    h = const.h # Planck's constant
-    c = const.c # speed of light 
-    
     # Set empty lists for appending later
     phases, phase_function, fpfs, separation, Fp, planet_counts = [], [], [], [], [], []
     
@@ -386,7 +382,7 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         fpfs.append(flux_ratio.value)
     
         # --------- Convert to planet counts ---------
-        c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength*u.m / (h * c)) * F_planet * Detector.bandwidth*u.m * (Detector.D*u.m / 2)**2
+        c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength*u.m / (const.h * const.c)) * F_planet * Detector.bandwidth*u.m * (Detector.D*u.m / 2)**2
         planet_counts.append(c_p.value)
         
     return phases, phase_function, fpfs, planet_counts 
@@ -433,13 +429,13 @@ def calc_SNR(C_p, C_b):
 
     return SNR
 
-def sigma_photo(k, FWHM, SNR):
+def sigma_photo(stability_constant, FWHM, SNR):
     '''
     Positional uncertainty due to detected signal.
 
     Parameters
     ----------
-    k : float
+    stability_constant : float
         Float that roughly describes the pointing stability of the telescope.
     FWHM : float
         FWHM of system of interest in units of mas
@@ -451,7 +447,56 @@ def sigma_photo(k, FWHM, SNR):
     float
         Uncertainty in units of mas
     '''
-    return k * FWHM / SNR
+    return stability_constant * FWHM / SNR
+
+def astro_photo_uncertainty(SNRs, detector, star):
+    '''
+    Estimate the astrometric uncertainty due to the photometry
+    and add the position error to the observation coordinates.
+
+    Parameters
+    ----------
+    SNRs : list of np.arrays
+        SNRs of detections
+    detector : photometry.Detector
+        detector object which contains FWHM and stability constant
+    star : photometry.Star
+        star object which contains distance to system
+
+    Returns
+    -------
+    _type_
+        _description_
+    '''
+    sigma_as = sigma_photo(detector.stability_constant, detector.FWHM, SNRs)
+    sigma_AU = arcsec_to_AU(sigma_as, star.d_system) # uncertainty in units of AU
+
+    # Calculate new position from uncertainty with a gaussian, 
+    # where uncertainty in AU is the std
+    x_err = np.random.normal(0, sigma_AU)
+    y_err = np.random.normal(0, sigma_AU)
+
+    return x_err, y_err # [AU]
+
+def arcsec_to_AU(angular_sep_arcsec, dist_pc):
+    '''
+    Convert separation in arcsec to AU
+
+    Parameters
+    ----------
+    angular_sep_arcsec : float
+        angular separation in arcseconds
+    dist_pc : float
+        observed system distance [parsecs]
+
+    Returns
+    -------
+    float
+        angular separation in AU
+
+    '''
+    separation_AU = angular_sep_arcsec * dist_pc.value
+    return separation_AU
 
 def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector): # TODO: rename function to something like "simulate_noisy_detection" ?
     '''
@@ -512,7 +557,6 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
         for count in photon_counts:
             noisy_count, C_p, C_b = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time, bkgd count rate * int. time
             noisy_counts.append(noisy_count)
-            # print('C_p: ', C_p, '\nC_b: ', C_b)
             # calculate SNR of detection
             SNR = calc_SNR(C_p, C_b)
             SNRs.append(SNR)
@@ -523,4 +567,3 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
         SNR_sys.append(SNR[0])
         
     return noisy_counts_sys, photon_rates_sys, SNR_sys
-    # TODO: test using SNRs for location uncertainty
