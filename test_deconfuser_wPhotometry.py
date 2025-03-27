@@ -39,6 +39,7 @@ parser.add_argument("--max_i", type=float, default=np.pi/2, help="maximum inclin
 parser.add_argument("--max_e", type=float, default=0.3, help="maximum eccentricity (default: 0.3)")
 parser.add_argument("--spread_i_O", type=float, default=0.0, help="spread of inclination and LAN in radians (default: 0.0 - coplanar)")
 parser.add_argument("--n_systems", type=int, default=10, help="number of systems (default: 10)")
+parser.add_argument("--sigma_photo", action="store_true", help="whether to add astrometric uncertainty due to photometry")
 parser.add_argument("-v", "--verbose", action="store_true", help="print planet data")
 parser.add_argument("tolerances", type=float, nargs="+", help="orbit fit tollerances")
 parser.add_argument("--output_file", type=str, default=f"test_deconfuser_output_{now}.txt", help="deconfuser output results file name")
@@ -77,8 +78,9 @@ writer.writerow(headers)          # add headers to file
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
 planet = phot.Planet(R_p=6.371e6, Ag=0.3)                         # values for Earth
 detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
-                    fwc=80000, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039,
-                    wavelength=573.8e-9, bandwidth=56.5e-9) # Roman instrument parameters
+                    fwc=80000, conversion_gain=1.0, t=108e3, D=2.36, throughput=0.38, f_pa=0.039,
+                    wavelength=573.8e-9, bandwidth=56.5e-9, stability_constant=1.0) # Roman instrument parameters -- TODO: change t back to 3600
+print('estimated_FWHM: ', detector.FWHM, ' mas')
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
@@ -123,8 +125,14 @@ for _ in range(args.n_systems):
         all_coords.append(list(map(list, observations[ip*len(ts):(ip+1)*len(ts)])))
     all_coords = np.asarray(all_coords)
     # get noisy and not noisy photometric detections for simulated system
-    noisy_detections, detections_photon_rates = phot.get_detections_counts(args.n_planets, args.n_epochs, xyzs=all_coords, 
+    noisy_detections, detections_photon_rates, SNRs = phot.get_detections_counts(args.n_planets, args.n_epochs, xyzs=all_coords, 
                                                                                Planet=planet, Star=star, Detector=detector)
+    print('SNRs: ', SNRs)
+    
+    if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
+        sigma_mas = phot.sigma_photo()
+
+
 
     if args.verbose:
         print("\nts =", list(ts)) 
