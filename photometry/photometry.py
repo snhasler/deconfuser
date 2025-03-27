@@ -130,7 +130,7 @@ class Detector:
     Class for the detecting instrument.
     '''
     def __init__(self, qe, cic, dark_current, read_noise, gain, fwc, conversion_gain, t,
-                 D, throughput, f_pa, wavelength, bandwidth):
+                 D, throughput, f_pa, wavelength, bandwidth, stability_constant):
         '''
         Detector parameters
 
@@ -163,6 +163,8 @@ class Detector:
             Wavelength of observation [m]
         bandwidth : float
             bandwidth of wavelength band [m]
+        stability_constant : float
+            Constant to simulate stability of telescope [unitless] (higher -> less stable)
 
         '''
         self.qe = qe
@@ -178,6 +180,30 @@ class Detector:
         self.f_pa = f_pa
         self.wavelength = wavelength
         self.bandwidth = bandwidth
+        self.stability_constant = stability_constant
+
+        self.calc_FWHM(self.wavelength, self.D)
+        
+    def calc_FWHM(self, wavelength, D):
+        '''
+        Estimate the FWHM of a telescope system given the observing
+        wavelength and aperutre diamter
+
+        Parameters
+        ----------
+        wavelength : float
+            Wavelength of observation [m]
+        D : float
+            aperture diameter [m]
+
+        Returns
+        -------
+        float
+            estimated FWHM in mas
+        '''
+        FWHM_rad = (1.029 * u.rad) * (wavelength / D) 
+        FWHM_mas = FWHM_rad.to(u.arcsecond).value * 1000
+        self.FWHM = FWHM_mas 
 
     def add_noise(self, detected_rate):
         '''
@@ -223,7 +249,7 @@ class Detector:
         # Get just background counts
         C_b = (with_noise - N) / self.gain # (total counts - planet counts) * t = background counts * t
 
-        return with_noise, N, C_b
+        return with_noise, N, C_b[0]
     
     def noise_distribution(self, detected_rate, dist_size=1e5):
         '''
@@ -402,10 +428,30 @@ def calc_SNR(C_p, C_b):
     SNR
         signal-to-noise ratio for a given detection
     '''
-    C_noise = np.sqrt( C_p + (2 * C_b) ) # noise counts
-    SNR = C_p / C_noise
+    C_noise = np.sqrt( C_p + (2 * C_b) ) # counts due to noise
+    SNR = C_p / C_noise                  # planet counts / noise
+
     return SNR
 
+def sigma_photo(k, FWHM, SNR):
+    '''
+    Positional uncertainty due to detected signal.
+
+    Parameters
+    ----------
+    k : float
+        Float that roughly describes the pointing stability of the telescope.
+    FWHM : float
+        FWHM of system of interest in units of mas
+    SNR : float
+        signal-to-noise ratio of detection
+
+    Returns
+    -------
+    float
+        Uncertainty in units of mas
+    '''
+    return k * FWHM / SNR
 
 def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector): # TODO: rename function to something like "simulate_noisy_detection" ?
     '''
@@ -445,6 +491,7 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
     
     noisy_counts_sys = []
     photon_rates_sys = []
+    SNR_sys = []
     
     for planet in range(n_planets):
         # --------- Handle detection coordinates ----------
@@ -452,23 +499,28 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
         xs, ys, zs = separate_xyzs(xyzs_planet) 
         
         # ----------- Calculate phase and intensity information -----------
-        phases, phase_func, fpfs, photon_rates = get_planet_count_rate(Planet, Star, Detector, xs=xs, 
+        phases, phase_func, fpfs, photon_counts = get_planet_count_rate(Planet, Star, Detector, xs=xs, 
                                                                        ys=ys, zs=zs)
         print('phases: ', phases)
-        print('photon_rates: ', photon_rates)
+        print('phase function: ', phase_func)
+        print('photon_rates: ', photon_counts)
         # ----------- append detections' photon rates to one list ---------
-        photon_rates_sys.append(photon_rates)
+        photon_rates_sys.append(photon_counts)
 
         # ----------- Calculate noisy detections ---------
         noisy_counts, SNRs = [], []
-        for rate in photon_rates:
-            noisy_count, C_p, C_b = Detector.add_noise(rate) # noisy count per detection, planet count rate * integration time, bkgd count rate * int. time
+        for count in photon_counts:
+            noisy_count, C_p, C_b = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time, bkgd count rate * int. time
             noisy_counts.append(noisy_count)
+            # print('C_p: ', C_p, '\nC_b: ', C_b)
             # calculate SNR of detection
             SNR = calc_SNR(C_p, C_b)
             SNRs.append(SNR)
 
         noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
         noisy_counts_sys.append(noisy_counts[0]) 
+        SNR = np.reshape(np.asarray(SNRs), (1,n_detections))
+        SNR_sys.append(SNR[0])
         
-    return noisy_counts_sys, photon_rates_sys, SNRs
+    return noisy_counts_sys, photon_rates_sys, SNR_sys
+    # TODO: test using SNRs for location uncertainty
