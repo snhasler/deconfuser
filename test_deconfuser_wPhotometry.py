@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 import csv
+import matplotlib.pyplot as plt # TODO: remove
 
 import deconfuser.sample_planets as sample_planets
 import deconfuser.orbit_fitting as orbit_fitting
@@ -19,6 +20,7 @@ import deconfuser.partition_ranking as partition_ranking
 import photometry.photometry as phot
 import photometry.likelihood as L
 import photometry.ranking as ranking
+import photometry.utils as utils
 from datetime import datetime 
 
 start = datetime.now()
@@ -76,10 +78,10 @@ writer.writerow(headers)          # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
-planet = phot.Planet(R_p=6.371e6, Ag=0.3)                         # values for Earth
+planet = phot.Planet(R_p=6.371e6, Ag=0.3)                         # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
 detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
-                    fwc=80000, conversion_gain=1.0, t=108e3, D=2.36, throughput=0.38, f_pa=0.039,
-                    wavelength=573.8e-9, bandwidth=56.5e-9, stability_constant=1.0) # Roman instrument parameters -- TODO: change t back to 3600
+                    fwc=80000, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039,
+                    wavelength=573.8e-9, bandwidth=56.5e-9, stability_constant=0.5) # Roman instrument parameters 
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
@@ -101,6 +103,7 @@ orbit_fitter = orbit_fitting.OrbitFitter(args.mu, ts, args.min_a-tol, args.max_a
 
 
 for _ in range(args.n_systems):
+    plt.figure() # TODO: remove
     # -------------------- Generate simulated systems --------------------
     print(f'\nSystem #{_} \n----------') 
     # Choose random orbit parameters for each planet
@@ -109,13 +112,31 @@ for _ in range(args.n_systems):
 
     # Get coordinates of planets when observed
     xs,ys,zs = sample_planets.get_observations(a, e, i, o, O, M0, ts, args.mu) 
+    # TODO: remove ------
+    ts_more = 0.1*np.arange(50)
+    xs_more, ys_more, zs_more = sample_planets.get_observations(a, e, i, o, O, M0, ts_more, args.mu)
+    obs_more = np.stack([xs_more,ys_more,zs_more], axis=2).reshape((-1,3))
+    # ------ ^^^^ ------
     observations = np.stack([xs,ys,zs], axis=2).reshape((-1,3))
 
-    # Add radially bounded astrometry error
-    noise_r = tolerances[-1]*np.random.random(len(observations)) 
-    noise_a = 2*np.pi*np.random.random(len(observations))
+    # Add radially bounded astrometry error to simulated detections
+    # if photometry-dependent error not included
+    if args.sigma_photo:
+        noise_r = 0
+        noise_a = 0
+    else:
+        noise_r = tolerances[-1]*np.random.random(len(observations)) 
+        noise_a = 2*np.pi*np.random.random(len(observations))
+   
     observations[:,0] += noise_r*np.cos(noise_a) # x-direction error 
     observations[:,1] += noise_r*np.sin(noise_a) # y-direction error 
+    print('observations with only astrom tolerance: ', observations)
+
+    plt.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', alpha=0.6) # TODO: remove
+    plt.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k', alpha=0.6) # TODO: remove
+    plt.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k', alpha=0.6) # TODO: remove
+    plt.plot(obs_more[:,0][:50], obs_more[:,1][:50], color='k', alpha=0.6)
+    plt.plot(obs_more[:,0][50:50*2], obs_more[:,1][50:50*2], color='k', alpha=0.6)
 
     # Calculate photometry of simulated system (these are your "observations")
     all_coords = [] 
@@ -125,15 +146,24 @@ for _ in range(args.n_systems):
     # get noisy and not noisy photometric detections for simulated system
     noisy_detections, detections_photon_rates, SNRs = phot.get_detections_counts(args.n_planets, args.n_epochs, xyzs=all_coords, 
                                                                                Planet=planet, Star=star, Detector=detector)
-    
+    print('SNRs: ', SNRs)
     if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
-        # Calculate error in x,y direction due to planet signal
-        x_err, y_err = phot.astro_photo_uncertainty(SNRs, detector, star)
-        z_err = np.zeros_like(x_err)
-        photo_astro_errs = np.stack([x_err,y_err,z_err], axis=2).reshape((-1,3))
-        # Add error to simulated observations' coordinates
-        observations[:,0] += photo_astro_errs[:,0]
-        observations[:,1] += photo_astro_errs[:,1]
+        # Calculate error in x,y directions due to planet signal
+        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star)
+        # Add uncertainty to coordinates as gaussian with standard deviation of sigma
+        observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
+        observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
+
+    # TODO: remove plotting
+    plt.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='r', alpha=0.8, label='with photo/astro err')
+    plt.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='r', alpha=0.8)
+    plt.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='r', alpha=0.8) 
+
+    plt.scatter(0, 0, marker='*', color='gold', s=100)
+    plt.xlabel('x (AU)')
+    plt.ylabel('y (AU)')
+    plt.title('Detections with vs. without\njoint astro/photo error')
+    plt.show()
 
     if args.verbose:
         print("\nts =", list(ts)) 
