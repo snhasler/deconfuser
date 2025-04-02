@@ -20,6 +20,7 @@ n_planets = 3
 n_epochs = 3
 cadence = 0.5
 verbose = True
+sigma_photo = True
 tolerances = [0.05]
 n_systems = 11
 
@@ -36,14 +37,14 @@ start = datetime.now()
 now = start.strftime("%Y-%m-%d_%H%M%S") # for text file
 
 # File with systems to run
-# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_lowi.txt" # low inclination systems
+systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_lowi.txt" # low inclination systems
 # systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_medi.txt" # med incl. systems
-systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_highi.txt" # high incl. systems
+# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_highi.txt" # high incl. systems
 
 # Output file path
-path = "/Users/shasler/Code/deconfuser/output_files/ten_systems_for_paper/"
-f = open(path + f"highi_wErr_output_{now}.txt", "a")
-logfile = open(path + f"run_log_highi_wErr_10systems_{now}.log", "a") 
+path = "/Users/shasler/Code/deconfuser/output_files/"
+f = open(path + f"lowi_wErr_output_{now}.txt", "a")
+logfile = open(path + f"run_log_lowi_wErr_10systems_{now}.log", "a") 
 sys.stdout = logfile # redirect output to log file
 sys.stderr = logfile # redirect error output to log file also
 # ------------------------------------------------------------
@@ -62,18 +63,17 @@ writer.writerow(headers) # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu) # system distance in parsecs -- values for the Sun
-planet = phot.Planet(R_p=6.371e6, Ag=0.3)              # values for Earth
+planet = phot.Planet(R_p=6.371e6, Ag=0.3)                         # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
 detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
                     fwc=80000, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039,
-                    wavelength=573.8e-9, bandwidth=56.5e-9) # Roman instrument parameters
-                    # f_pa & throughput from V. Bailey (core throughput and optical throughput)
+                    wavelength=573.8e-9, bandwidth=56.5e-9, stability_constant=0.5) # Roman instrument parameters 
 
 #observation epochs (years)
 ts = cadence*np.arange(n_epochs)
 
 #the correct partition of detection by planets
 correct_partition = [tuple(range(i*len(ts),(i+1)*len(ts))) for i in range(n_planets)]
-print(f'correct_partition: {correct_partition}') # TODO: remove -- SH added
+print(f'correct_partition: {correct_partition}') 
 
 #to speed up computation, begin with coarsest tolerance and progress to finest:
 #1. full orbit grouping will be performed with the coarsest tolerance (i.e., recursively consider all groupings of observation)
@@ -100,14 +100,17 @@ for _ in range(n_systems):
     M0_vals = np.array(system_data['M0'].values)
 
     #get coordinates of planets when observed
-    xs,ys,zs = sample_planets.get_observations(a_vals, e_vals, i_vals, o_vals, O_vals, M0_vals, ts, mu) # TODO: remove E and remove from sample_planets
+    xs,ys,zs = sample_planets.get_observations(a_vals, e_vals, i_vals, o_vals, O_vals, M0_vals, ts, mu) 
     observations = np.stack([xs,ys,zs], axis=2).reshape((-1,3))
 
     #add radially bounded astrometry error
-    # TODO: ADD CHANGES FOR NOISE BASED ON PHOTOMETRY HERE
-    noise_r = tolerances[-1]*np.random.random(len(observations)) # returns array of len(obs) * final tolerance value 
-    noise_a = 2*np.pi*np.random.random(len(observations)) # radial error?  
-    observations[:,0] += noise_r*np.cos(noise_a) # x-direction error  # TODO: remove 0, added for testing no astro noise
+    if sigma_photo:
+        noise_r = 0
+        noise_a = 0
+    else:
+        noise_r = tolerances[-1]*np.random.random(len(observations)) # returns array of len(obs) * final tolerance value 
+        noise_a = 2*np.pi*np.random.random(len(observations)) # radial error?  
+    observations[:,0] += noise_r*np.cos(noise_a) # x-direction error  
     observations[:,1] += noise_r*np.sin(noise_a) # y-direction error 
         # observations format: array([[group1_x, group1_y, group1_z], [group2_x, ..., ...], [groupN_x, groupN_y, groupN_z]])
         # observations are the x,y,z coordinates for each of the orbit groupings, which potential orbital parameters are drawn from
@@ -119,8 +122,15 @@ for _ in range(n_systems):
         all_coords.append(list(map(list, observations[ip*len(ts):(ip+1)*len(ts)])))
     all_coords = np.asarray(all_coords)
     # get noisy and not noisy photometric detections for simulated system -- phase information buried in this function
-    noisy_detections, detections_photon_rates = phot.get_detections_counts(n_planets, n_epochs, xyzs=all_coords, 
+    noisy_detections, detections_photon_rates, SNRs, C_p = phot.get_detections_counts(n_planets, n_epochs, xyzs=all_coords, 
                                                                            Planet=planet, Star=star, Detector=detector)
+
+    if sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
+        # Calculate error in x,y directions due to planet signal
+        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star)
+        # Add uncertainty to coordinates as gaussian with standard deviation of sigma
+        observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
+        observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
 
     if verbose:
         print("\nts =", list(ts)) # observation epochs
