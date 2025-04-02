@@ -141,7 +141,7 @@ class Detector:
         cic : float
             Clock-induced charge of detector [e-]
         dark_current : float
-            Detector dark current [e-]
+            Detector dark current [e-/sec]
         read_noise : int
             Read noise of detector [e-/sec]
         gain : int
@@ -438,11 +438,11 @@ def sigma_photo(stability_constant, FWHM, SNR):
     stability_constant : float
         Float that roughly describes the pointing stability of the telescope.
     FWHM : float
-        FWHM of system of interest in units of mas
+        FWHM of system of interest in units of arcseconds
     SNR : float
         signal-to-noise ratio of detection
 
-    Returns
+    Returnss
     -------
     float
         Uncertainty in units of mas
@@ -471,12 +471,7 @@ def astro_photo_uncertainty(SNRs, detector, star):
     sigma_as = sigma_photo(detector.stability_constant, detector.FWHM, SNRs)
     sigma_AU = arcsec_to_AU(sigma_as, star.d_system) # uncertainty in units of AU
 
-    # Calculate new position from uncertainty with a gaussian, 
-    # where uncertainty in AU is the std
-    x_err = np.random.normal(0, sigma_AU)
-    y_err = np.random.normal(0, sigma_AU)
-
-    return x_err, y_err # [AU]
+    return sigma_AU
 
 def arcsec_to_AU(angular_sep_arcsec, dist_pc):
     '''
