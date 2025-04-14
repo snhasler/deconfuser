@@ -7,22 +7,31 @@ import numpy as np
 import astropy.constants as const
 import astropy.units as u
 
+'''
+TODO:
+- Add equation to compute leakage 
+- Add equation to compute zodiacal & exozodiacal light 
+'''
 class System:
-    def __init__(self, n_exozodi, n_leakage):
+    def __init__(self, n_exozodi, n_leakage, n_zodi):
         '''
         Holds system parameters.
 
         Parameters
         ----------
-        n_exozodi : int
+        n_exozodi : float
             Number of counts per second contributed to the background counts
             due to exozodi source.
-        n_leakage : int
+        n_leakage : float
             Number of counts per second contributed to the background counts
             due to leakage
+        n_zodi : float
+            Number of counts per second contributed to the background counts
+            due to zodiacal light.
         '''
         self.n_exozodi = n_exozodi
         self.n_leakage = n_leakage
+        self.n_zodi = n_zodi
 
 class Star:
     def __init__(self, T, R_star, d_system, mu):
@@ -147,7 +156,8 @@ class Detector:
     Class for the detecting instrument.
     '''
     def __init__(self, qe, cic, dark_current, read_noise, gain, fwc, conversion_gain, t,
-                 D, throughput, f_pa, wavelength, bandwidth, stability_constant):
+                 D, throughput, f_pa, wavelength, bandwidth, stability_constant,
+                 passbands=None):
         '''
         Detector parameters
 
@@ -200,6 +210,24 @@ class Detector:
         self.stability_constant = stability_constant
 
         self.calc_FWHM(self.wavelength, self.D)
+
+    def add_passbands(self, passbands):
+        '''
+        Function to add passbands to the detector object.
+
+        Parameters
+        ----------
+        passbands : dict
+            Dictionary of passbands with keys as the central wavelength of the filter.
+            Format: {"575":{"min_lambda": 0.546,
+                       "max_lambda": 0.603,
+                       "thru": 0.01},
+                    "659":{"min_lambda": 0.596,
+                       "max_lambda": 0.715,
+                       "thru": 0.01}
+                    }
+        '''
+        self.passbands = passbands
 
     def calc_FWHM(self, wavelength, D):
         '''
@@ -588,18 +616,16 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
         # ----------- Calculate noisy detections ---------
         noisy_counts, SNRs = [], []
         # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
-        bkgd_count, C_zod_exozod_lk = Detector.add_noise(2 + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
+        bkgd_count, C_zod_exozod_lk = Detector.add_noise(System.n_zodi + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
         C_dc = Detector.dark_current * Detector.t                                # Counts due to dark current
-        C_b = C_zod_exozod_lk + Detector.read_noise + C_dc
-        
+        C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc # TODO: should RN be squared?
+
         for count in photon_counts:
             noisy_count, C_p = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time
             noisy_counts.append(noisy_count)
             # calculate SNR of detection
             SNR = calc_SNR(C_p, C_b)
-            # print('SNR: ', SNR) # TODO: remove
             SNRs.append(SNR)
-            # print('C_p: ', C_p) # TODO: remove
 
         noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
         noisy_counts_sys.append(noisy_counts[0]) 
