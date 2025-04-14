@@ -11,6 +11,8 @@ import os
 import sys
 import csv
 import matplotlib.pyplot as plt # TODO: remove
+from matplotlib.patches import Circle # TODO: remove
+plt.rcParams.update({"font.size":16})
 
 import deconfuser.sample_planets as sample_planets
 import deconfuser.orbit_fitting as orbit_fitting
@@ -77,11 +79,12 @@ writer.writerow([run_parameters]) # save run parameters in file
 writer.writerow(headers)          # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
+system = phot.System(n_exozodi=4/3600, n_leakage=20/3600)
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
-planet = phot.Planet(R_p=6.371e6, Ag=0.3)                         # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
-detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
-                    fwc=80000, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039,
-                    wavelength=573.8e-9, bandwidth=56.5e-9, stability_constant=0.5) # Roman instrument parameters 
+planet = phot.Planet(R_p=6.371e6, Ag=0.2)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
+detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4
+                    fwc=80000, conversion_gain=1.0, t=1.8e7, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                    wavelength=500e-9, bandwidth=8e-9, stability_constant=0.5) 
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
@@ -101,9 +104,9 @@ orbit_grouper = orbit_grouping.OrbitGrouper(args.mu, ts, args.min_a-tolerances[0
 orbit_fitters = [orbit_fitting.OrbitFitter(args.mu, ts, args.min_a-tol, args.max_a+tol, args.max_e, tol) for tol in tolerances[1:]]
 orbit_fitter = orbit_fitting.OrbitFitter(args.mu, ts, args.min_a-tol, args.max_a+tol, args.max_e, tol) # TODO: remove later -- SH added
 
-
+all_phases, all_SNRs, all_sigma = [], [], [] # TODO: remove
 for _ in range(args.n_systems):
-    plt.figure() # TODO: remove
+    # fig, ax = plt.subplots() # TODO: remove
     # -------------------- Generate simulated systems --------------------
     print(f'\nSystem #{_} \n----------') 
     # Choose random orbit parameters for each planet
@@ -113,7 +116,8 @@ for _ in range(args.n_systems):
     # Get coordinates of planets when observed
     xs,ys,zs = sample_planets.get_observations(a, e, i, o, O, M0, ts, args.mu) 
     # TODO: remove ------
-    ts_more = 0.1*np.arange(50)
+    t_range = 100
+    ts_more = 0.05*np.arange(t_range)
     xs_more, ys_more, zs_more = sample_planets.get_observations(a, e, i, o, O, M0, ts_more, args.mu)
     obs_more = np.stack([xs_more,ys_more,zs_more], axis=2).reshape((-1,3))
     # ------ ^^^^ ------
@@ -130,13 +134,16 @@ for _ in range(args.n_systems):
    
     observations[:,0] += noise_r*np.cos(noise_a) # x-direction error 
     observations[:,1] += noise_r*np.sin(noise_a) # y-direction error 
-    print('observations with only astrom tolerance: ', observations)
 
-    plt.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', alpha=0.6) # TODO: remove
-    plt.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k', alpha=0.6) # TODO: remove
-    plt.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k', alpha=0.6) # TODO: remove
-    plt.plot(obs_more[:,0][:50], obs_more[:,1][:50], color='k', alpha=0.6)
-    plt.plot(obs_more[:,0][50:50*2], obs_more[:,1][50:50*2], color='k', alpha=0.6)
+    # ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', label='original position') # TODO: remove
+    # ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k') # TODO: remove
+    # ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k') # TODO: remove
+    # ax.plot(obs_more[:,0][:t_range], obs_more[:,1][:t_range], color='k', alpha=0.7)
+    # ax.plot(obs_more[:,0][t_range:t_range*2], obs_more[:,1][t_range:t_range*2], color='k', alpha=0.7)
+    # ax.plot(obs_more[:,0][t_range*2:], obs_more[:,1][t_range*2:], color='k', alpha=0.7)
+    # xs_original = observations[:,0].flatten()
+    # print('xs_original: ', xs_original)
+    # ys_original = observations[:,1].flatten()
 
     # Calculate photometry of simulated system (these are your "observations")
     all_coords = [] 
@@ -144,26 +151,40 @@ for _ in range(args.n_systems):
         all_coords.append(list(map(list, observations[ip*len(ts):(ip+1)*len(ts)])))
     all_coords = np.asarray(all_coords)
     # get noisy and not noisy photometric detections for simulated system
-    noisy_detections, detections_photon_rates, SNRs = phot.get_detections_counts(args.n_planets, args.n_epochs, xyzs=all_coords, 
-                                                                               Planet=planet, Star=star, Detector=detector)
+    noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts(args.n_planets, args.n_epochs, xyzs=all_coords, 
+                                                                               Planet=planet, Star=star, System=system, Detector=detector)
+    print('noisy_detections: ', noisy_detections)
     print('SNRs: ', SNRs)
+    print('phases: ', phases)
+
     if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
         # Calculate error in x,y directions due to planet signal
-        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star)
+        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.015) # TODO: remove hard-coded values
+        print('sigma_AU.flatten(): ', sigma_AU.flatten())
         # Add uncertainty to coordinates as gaussian with standard deviation of sigma
         observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
         observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
 
-    # TODO: remove plotting
-    plt.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='r', alpha=0.8, label='with photo/astro err')
-    plt.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='r', alpha=0.8)
-    plt.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='r', alpha=0.8) 
+    #     # TODO: remove plotting
+    #     ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
+    #                linewidth=1, alpha=0.5, label='with photo/astro err', zorder=3)
+    #     ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
+    #                linewidth=1,  alpha=0.5, zorder=3)
+    #     ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
+    #                linewidth=1,  alpha=0.5, zorder=3) 
 
-    plt.scatter(0, 0, marker='*', color='gold', s=100)
-    plt.xlabel('x (AU)')
-    plt.ylabel('y (AU)')
-    plt.title('Detections with vs. without\njoint astro/photo error')
-    plt.show()
+    #     for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
+    #         circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
+    #         # zi*2 = 2-sigma uncertainty radius size
+    #         ax.add_patch(circle)
+
+    # ax.scatter(0, 0, marker='*', color='gold', s=100)
+    # ax.set_xlabel('x (AU)')
+    # ax.set_ylabel('y (AU)')
+    # ax.set_aspect('equal')
+    # plt.legend()
+    # plt.title('Detections with vs. without\njoint astro/photo error')
+    # plt.show()
 
     if args.verbose:
         print("\nts =", list(ts)) 
@@ -187,6 +208,7 @@ for _ in range(args.n_systems):
     # -------------------- Do the orbit fitting --------------------
     # get all possible (full or partial) groupings of detection by orbits that fit them with the coarsest tolerance
     groupings = orbit_grouper.group_orbits(observations, all_ts)
+    print('groupings: ', groupings)
 
     # select only groupings that include all epochs (these will be most highly ranked, so no need to check the rest)
     groupings = [g for g in groupings if len(g) == args.n_epochs] 
@@ -202,7 +224,12 @@ for _ in range(args.n_systems):
 
         # Find all partitions of observations to exactly n_planets groups
         # Note that since all partial grouping were filtered out, all partitions will have exactly n_planets groups
-        top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
+        try:
+            top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
+        except:
+            if len(groupings) == 0:
+                top_partitions = []
+                print("No groups which contain all epochs of observation.")
 
         if found_correct < args.n_planets:
             for ip in range(args.n_planets):
@@ -272,6 +299,12 @@ for _ in range(args.n_systems):
             #only keep groupings that cna be fitted with an orbit with the finer tolerance
             groupings = [g for g in groupings if any(err < tolerances[j+1] for err in orbit_fitters[j].fit(observations[list(g)], only_error=True))]
 
+    # TODO: remove -----
+    all_phases.append(phases)
+    all_SNRs.append(SNRs)
+    all_sigma.append(sigma_AU)
+    # ^ --------------
+
 # Re-rank systems with photometry
 try: # create ranking files directory if it doesn't exist
     os.makedirs("output_files/ranking_files", exist_ok=True) 
@@ -279,14 +312,17 @@ except OSError as error:
     print("ranking_files directory cannot be created.")
 
 # Create photometry ranking object -- houses file dataframe
-confused_systems = ranking.PhotometryRanking(filepath=f"output_files/{args.output_file}", n_planets=args.n_planets)
-df_confused = confused_systems.get_top_group_options()  # iterate over options with multiple groups
-df_ranked = confused_systems.top_ranked_partition()     # Get top ranked partition in each system
-df_recombined = confused_systems.combine_and_cleanup(save_file=True, save_path=args.ranking_path + f"systems_ranked_{now}.txt")  # Combine original and ranked dataframes
-# If you want to calculate percent difference between simulated and fit orbits:
-df_final = confused_systems.orbit_percent_diff()      
-df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=args.ranking_path + f"systems_ranked_wPercDiff_{now}.txt")    
-print('\nPhotometry ranking complete.')
+try:
+    confused_systems = ranking.PhotometryRanking(filepath=f"output_files/{args.output_file}", n_planets=args.n_planets)
+    df_confused = confused_systems.get_top_group_options()  # iterate over options with multiple groups
+    df_ranked = confused_systems.top_ranked_partition()     # Get top ranked partition in each system
+    df_recombined = confused_systems.combine_and_cleanup(save_file=True, save_path=args.ranking_path + f"systems_ranked_{now}.txt")  # Combine original and ranked dataframes
+    # If you want to calculate percent difference between simulated and fit orbits:
+    df_final = confused_systems.orbit_percent_diff()      
+    df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=args.ranking_path + f"systems_ranked_wPercDiff_{now}.txt")    
+    print('\nPhotometry ranking complete.')
+except:
+    print("No ranking file") # TODO: update to handle more from ^
 
 end  = datetime.now()
 runtime = end - start
@@ -298,3 +334,48 @@ logfile.close()
 sys.stdout = sys.__stdout__ # reset standard output to terminal
 sys.stderr = sys.__stderr__ # reset error output to terminal
 print('Output written to: output_files/' + args.output_file + " & " + args.ranking_path)
+
+# Plot phases/SNR after this finishes
+SNR = [item for sublist in all_SNRs for item in sublist for item in item] # rearrange
+phases = np.abs([item for sublist in all_phases for item in sublist for item in item]) # rearrange
+sigmas = [item for sublist in all_sigma for item in sublist for item in item]
+
+sorted_phases, sorted_SNR, sorted_sigmas = zip(*sorted(zip(phases, SNR, sigmas))) # sort for plotting
+sorted_SNR = list(sorted_SNR) # convert to list
+sorted_sigmas = list(sorted_sigmas)
+
+# plot
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18,6))
+# uncertainty as function of phase angle plot
+fig1 = ax1.scatter(phases, sigmas, c=SNR, cmap='plasma', marker='o', s=50)
+cbar1 = fig.colorbar(fig1, ax=ax1)
+cbar1.ax.set_ylabel('SNR')
+ax1.set_xlabel('Phase angle (°)')
+ax1.set_ylabel('$\sigma$ (uncertainty) (AU)')
+ax1.set_title('uncertainty vs. phase angle')
+
+# ax1.set_ylim([-0.05,2])
+
+# Uncertainty as function of SNR plot
+ax2.scatter(SNR, sigmas, c=phases, cmap='plasma_r', marker='o', s=50)
+ax2.vlines(2, 0, np.max(sigmas), color='k', alpha=0.5, linestyle='dashed', label='SNR = 2') 
+ax2.set_xlabel('SNR')
+ax2.set_ylabel('$\sigma$ (uncertainty) (AU)')
+ax2.set_title('uncertainty vs. SNR')
+ax2.legend(loc='upper right')
+# ax2.set_ylim([-0.05,2])
+# ax2.set_xlim(([-0.05,5]))
+
+# SNR as function of phase angle plot
+fig3 = ax3.scatter(phases, SNR, c=phases, cmap='plasma_r', marker='o', s=50)
+cbar3 = fig.colorbar(fig3, ax=ax3)
+cbar3.ax.set_ylabel('Phase Angle')
+ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
+ax3.set_xlabel('Phase angle (°)')
+ax3.set_ylabel('SNR')
+ax3.set_title('SNR vs. phase angle')
+# ax3.set_ylim([-0.05,15])
+
+plt.tight_layout()
+plt.savefig('/Users/shasler/Desktop/SNR_phases_uncertainty.png', bbox_inches='tight', dpi='figure')
+plt.show()
