@@ -7,6 +7,23 @@ import numpy as np
 import astropy.constants as const
 import astropy.units as u
 
+class System:
+    def __init__(self, n_exozodi, n_leakage):
+        '''
+        Holds system parameters.
+
+        Parameters
+        ----------
+        n_exozodi : int
+            Number of counts per second contributed to the background counts
+            due to exozodi source.
+        n_leakage : int
+            Number of counts per second contributed to the background counts
+            due to leakage
+        '''
+        self.n_exozodi = n_exozodi
+        self.n_leakage = n_leakage
+
 class Star:
     def __init__(self, T, R_star, d_system, mu):
         '''
@@ -246,10 +263,7 @@ class Detector:
         with_noise[with_noise > self.fwc] = self.fwc
         with_noise /= self.conversion_gain  # [ADU]
 
-        # Get just background counts
-        C_b = (with_noise - N) / self.gain # (total counts - planet counts) * t = background counts * t
-
-        return with_noise, N, C_b[0]
+        return with_noise, N # noisy counts, planet counts without noise
     
     def noise_distribution(self, detected_rate, dist_size=1e5):
         '''
@@ -424,14 +438,17 @@ def calc_SNR(C_p, C_b):
     SNR
         signal-to-noise ratio for a given detection
     '''
+
+    # Compute total noise and SNR
     C_noise = np.sqrt( C_p + (2 * C_b) ) # counts due to noise
     SNR = C_p / C_noise                  # planet counts / noise
 
     return SNR
 
-def sigma_photo(stability_constant, FWHM, SNR):
+def sigma_photo(stability_constant, FWHM, SNR, SNR_low_lim=2, sigma_lim=0.01):
     '''
     Positional uncertainty due to detected signal.
+    Set to maximum uncertainty constant if SNR is below some lower limit. 
 
     Parameters
     ----------
@@ -442,14 +459,26 @@ def sigma_photo(stability_constant, FWHM, SNR):
     SNR : float
         signal-to-noise ratio of detection
 
-    Returnss
+    Returns
     -------
-    float
-        Uncertainty in units of mas
+    np.ndarray
+        Astrometric uncertainty with same units as FWHM
     '''
-    return stability_constant * FWHM / SNR
+    sigma_all = []
+    for arr in SNR: # for each epoch, get array of detections
+        sigma_subarr = []
+        for snr in arr: # for each detection
+            if snr >= SNR_low_lim:
+                sigma = stability_constant * FWHM / snr
+            else:
+                sigma = sigma_lim
+            sigma_subarr.append(sigma)
+        sigma_all.append(sigma_subarr)
+    sigma_all = np.array(sigma_all)
 
-def astro_photo_uncertainty(SNRs, detector, star):
+    return sigma_all
+
+def astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim, sigma_lim):
     '''
     Estimate the astrometric uncertainty due to the photometry
     and add the position error to the observation coordinates.
@@ -462,14 +491,21 @@ def astro_photo_uncertainty(SNRs, detector, star):
         detector object which contains FWHM and stability constant
     star : photometry.Star
         star object which contains distance to system
+    SNR_low_lim : float
+        Lower limit on SNR for setting uncertainty. 
+        Keyword for sigma_photo()
+    sigma_lim : float
+        Upper limit on uncertainty in units of AU.
+        Corresponds to minimum SNR value. If SNR below SNR_low_lim, 
+        uncertainty set to sigma_lim.
 
     Returns
     -------
-    _type_
-        _description_
+    np.ndarray
+        Astrometric uncertainty in units of AU
     '''
-    sigma_as = sigma_photo(detector.stability_constant, detector.FWHM, SNRs)
-    sigma_AU = arcsec_to_AU(sigma_as, star.d_system) # uncertainty in units of AU
+    sigma_as = sigma_photo(detector.stability_constant, detector.FWHM, SNRs, SNR_low_lim, sigma_lim)
+    sigma_AU = arcsec_to_AU(sigma_as, star.d_system)
 
     return sigma_AU
 
@@ -479,21 +515,22 @@ def arcsec_to_AU(angular_sep_arcsec, dist_pc):
 
     Parameters
     ----------
-    angular_sep_arcsec : float
+    angular_sep_arcsec : np.ndarray
         angular separation in arcseconds
     dist_pc : float
         observed system distance [parsecs]
 
     Returns
     -------
-    float
+    np.ndarray
         angular separation in AU
 
     '''
     separation_AU = angular_sep_arcsec * dist_pc.value
+
     return separation_AU
 
-def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector): # TODO: rename function to something like "simulate_noisy_detection" ?
+def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, Detector): # TODO: rename function to something like "simulate_noisy_detection" ?
     '''
     Generates noisy planet detections.
     Accepts detection coordinates, calculates phase/brightness, adds detector noise.
@@ -532,6 +569,7 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
     noisy_counts_sys = []
     photon_rates_sys = []
     SNR_sys = []
+    phases_sys = []
     
     for planet in range(n_planets):
         # --------- Handle detection coordinates ----------
@@ -541,24 +579,31 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, Detector)
         # ----------- Calculate phase and intensity information -----------
         phases, phase_func, fpfs, photon_counts = get_planet_count_rate(Planet, Star, Detector, xs=xs, 
                                                                        ys=ys, zs=zs)
-        print('phases: ', phases)
-        print('phase function: ', phase_func)
-        print('photon_rates: ', photon_counts)
+        # print('phases: ', phases)
+        # print('photon_rates: ', photon_counts)
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_counts)
+        phases_sys.append(phases)
 
         # ----------- Calculate noisy detections ---------
         noisy_counts, SNRs = [], []
+        # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
+        bkgd_count, C_zod_exozod_lk = Detector.add_noise(2 + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
+        C_dc = Detector.dark_current * Detector.t                                # Counts due to dark current
+        C_b = C_zod_exozod_lk + Detector.read_noise + C_dc
+        
         for count in photon_counts:
-            noisy_count, C_p, C_b = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time, bkgd count rate * int. time
+            noisy_count, C_p = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time
             noisy_counts.append(noisy_count)
             # calculate SNR of detection
             SNR = calc_SNR(C_p, C_b)
+            # print('SNR: ', SNR) # TODO: remove
             SNRs.append(SNR)
+            # print('C_p: ', C_p) # TODO: remove
 
         noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
         noisy_counts_sys.append(noisy_counts[0]) 
         SNR = np.reshape(np.asarray(SNRs), (1,n_detections))
         SNR_sys.append(SNR[0])
         
-    return noisy_counts_sys, photon_rates_sys, SNR_sys
+    return noisy_counts_sys, photon_rates_sys, SNR_sys, phases_sys
