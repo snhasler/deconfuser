@@ -1,6 +1,7 @@
 # Run deconfuser with phase information for specific systems
 # S. Hasler
 import numpy as np
+import os
 import sys
 import pandas as pd
 import csv
@@ -14,6 +15,7 @@ import deconfuser.orbit_grouping as orbit_grouping
 import deconfuser.partition_ranking as partition_ranking
 import photometry.photometry as phot
 import photometry.likelihood as L
+import photometry.ranking as ranking
 
 # ------------------------------------------------------------
 # Specify parameters
@@ -22,8 +24,8 @@ n_planets = 3
 n_epochs = 3
 cadence = 0.5
 verbose = True
-sigma_photo = False
-tolerances = [0.05]
+sigma_photo = True
+tolerances = [0.10]
 n_systems = 11
 
 # Deconfuser parameters
@@ -35,18 +37,27 @@ min_i = 0.0 # rad
 max_i = 1.5707963267948966 # rad
 spread_i_O = 0.0 # spread of inclination and LAN in radians
 
+ranking_path = "/Users/shasler/Code/deconfuser/output_files/ranking_files/"
+# signal-dependent uncertianty parameters
+SNR_lower_lim = 2.0
+sigma_lim = 0.015 # max uncertainty in astrometry due to SNR
+
 start = datetime.now()
 now = start.strftime("%Y-%m-%d_%H%M%S") # for text file
 
 # File with systems to run
 # systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_lowi.txt" # low inclination systems
-systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_medi.txt" # med incl. systems
-# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_highi.txt" # high incl. systems
+# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_medi.txt" # med incl. systems
+systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_highi.txt" # high incl. systems
+inc_group = "highi" # lowi, 
 
 # Output file path
 path = "/Users/shasler/Code/deconfuser/output_files/"
-f = open(path + f"medi_wErr_output_{now}.txt", "a")
-logfile = open(path + f"run_log_medi_wErr_10systems_{now}.log", "a") 
+output_file = f"{inc_group}_wPhotoErr_output_tol{tolerances[0]}_{now}.txt"
+run_log =  f"run_log_{inc_group}_wPhotoErr_10systems_tol{tolerances[0]}_{now}.log"
+
+f = open(path + output_file, "a")
+logfile = open(path +run_log, "a") 
 sys.stdout = logfile # redirect output to log file
 sys.stderr = logfile # redirect error output to log file also
 # ------------------------------------------------------------
@@ -64,11 +75,12 @@ writer.writerow([run_parameters]) # save run parameters in file
 writer.writerow(headers) # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
+system = phot.System(n_exozodi=4/3600, n_leakage=20/3600, n_zodi=2/3600) # background count contributions in units of s^-1
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu) # system distance in parsecs -- values for the Sun
-planet = phot.Planet(R_p=69911, Ag=0.5)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
-detector = phot.Detector(qe=0.9, cic=0.016, dark_current=0.067, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4
-                    fwc=80000, conversion_gain=1.0, t=108e3, D=6, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-                    wavelength=550e-9, bandwidth=50e-9, stability_constant=0.5) 
+planet = phot.Planet(R_p=6.371e6, Ag=0.3)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
+detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
+                    fwc=80000, conversion_gain=1.0, t=1.8e7, D=2.36, throughput=0.38, f_pa=0.039,
+                    wavelength=573.8e-9, bandwidth=56.5e-9) 
 
 #observation epochs (years)
 ts = cadence*np.arange(n_epochs)
@@ -138,17 +150,18 @@ for _ in range(n_systems):
     all_coords = []
     for ip in range(n_planets):
         all_coords.append(list(map(list, observations[ip*len(ts):(ip+1)*len(ts)])))
+
     all_coords = np.asarray(all_coords)
     # get noisy and not noisy photometric detections for simulated system -- phase information buried in this function
     noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts(n_planets, n_epochs, xyzs=all_coords, 
-                                                                               Planet=planet, Star=star, Detector=detector)
+                                                                               Planet=planet, Star=star, System=system, Detector=detector)
     print('noisy_detections: ', noisy_detections)
     print('SNRs: ', SNRs)
     print('phases: ', phases)
 
     if sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
         # Calculate error in x,y directions due to planet signal
-        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.01) # TODO: remove hard-coded values
+        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=SNR_lower_lim, sigma_lim=sigma_lim) # TODO: remove hard-coded values
         # Add uncertainty to coordinates as gaussian with standard deviation of sigma
         observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
         observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
@@ -300,6 +313,27 @@ for _ in range(n_systems):
         if j < len(tolerances) - 1:
             #only keep groupings that cna be fitted with an orbit with the finer tolerance
             groupings = [g for g in groupings if any(err < tolerances[j+1] for err in orbit_fitters[j].fit(observations[list(g)], only_error=True))]
+
+# Re-rank systems with photometry
+try: # create ranking files directory if it doesn't exist
+    os.makedirs("output_files/ranking_files", exist_ok=True) 
+except OSError as error: 
+    print("ranking_files directory cannot be created.")
+
+# Create photometry ranking object -- houses file dataframe
+try:
+    confused_systems = ranking.PhotometryRanking(filepath=f"output_files/{output_file}", n_planets=n_planets)
+    print('\nPerforming photometry ranking...')
+    df_confused = confused_systems.get_top_group_options()  # iterate over options with multiple groups
+    df_ranked = confused_systems.top_ranked_partition()     # Get top ranked partition in each system
+    df_recombined = confused_systems.combine_and_cleanup(save_file=True, save_path=ranking_path + f"systems_ranked_{now}.txt")  # Combine original and ranked dataframes
+    # If you want to calculate percent difference between simulated and fit orbits:
+    df_final = confused_systems.orbit_percent_diff()      
+    df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=ranking_path + f"systems_ranked_wPercDiff_{now}.txt")    
+    print('\nPhotometry ranking complete.')
+except:
+    print("No ranking file") # TODO: update to handle more from ^
+
 
 # record run time
 end  = datetime.now()

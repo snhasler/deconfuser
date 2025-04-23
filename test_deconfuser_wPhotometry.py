@@ -10,9 +10,9 @@ import argparse
 import os
 import sys
 import csv
-import matplotlib.pyplot as plt # TODO: remove
+import matplotlib.pyplot as plt       # TODO: remove
 from matplotlib.patches import Circle # TODO: remove
-plt.rcParams.update({"font.size":16})
+plt.rcParams.update({"font.size":16}) # TODO: remove
 
 import deconfuser.sample_planets as sample_planets
 import deconfuser.orbit_fitting as orbit_fitting
@@ -79,12 +79,12 @@ writer.writerow([run_parameters]) # save run parameters in file
 writer.writerow(headers)          # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
-system = phot.System(n_exozodi=4/3600, n_leakage=20/3600)
+system = phot.System(n_exozodi=4/3600, n_leakage=20/3600, n_zodi=2/3600) # exozodi = 4/hr at 1AU sep -- background count contributions in units of s^-1
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
 planet = phot.Planet(R_p=6.371e6, Ag=0.2)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
-detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4
-                    fwc=80000, conversion_gain=1.0, t=1.8e7, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-                    wavelength=500e-9, bandwidth=8e-9, stability_constant=0.5) 
+detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
+                    fwc=80000, conversion_gain=1.0, t=4e6, D=2.36, throughput=0.38, f_pa=0.039,
+                    wavelength=573.8e-9, bandwidth=56.5e-9) 
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
@@ -159,7 +159,7 @@ for _ in range(args.n_systems):
 
     if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
         # Calculate error in x,y directions due to planet signal
-        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.015) # TODO: remove hard-coded values
+        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.03) # TODO: remove hard-coded values
         print('sigma_AU.flatten(): ', sigma_AU.flatten())
         # Add uncertainty to coordinates as gaussian with standard deviation of sigma
         observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
@@ -371,10 +371,12 @@ fig3 = ax3.scatter(phases, SNR, c=phases, cmap='plasma_r', marker='o', s=50)
 cbar3 = fig.colorbar(fig3, ax=ax3)
 cbar3.ax.set_ylabel('Phase Angle')
 ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
+ax3.scatter(90, 5, c='k', marker='*', s=75, label='Robinson+2016')
 ax3.set_xlabel('Phase angle (°)')
 ax3.set_ylabel('SNR')
 ax3.set_title('SNR vs. phase angle')
 # ax3.set_ylim([-0.05,15])
+ax3.legend(loc='upper right', fontsize=14, framealpha=0.4)
 
 plt.tight_layout()
 plt.savefig('/Users/shasler/Desktop/SNR_phases_uncertainty.png', bbox_inches='tight', dpi='figure')
