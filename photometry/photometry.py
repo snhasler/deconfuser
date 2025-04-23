@@ -6,12 +6,14 @@ Photometry functions for use with deconfuser.
 import numpy as np
 import astropy.constants as const
 import astropy.units as u
+import ast
 
 '''
 TODO:
 - Add equation to compute leakage 
 - Add equation to compute zodiacal & exozodiacal light 
 '''
+
 class System:
     def __init__(self, n_exozodi, n_leakage, n_zodi):
         '''
@@ -98,7 +100,55 @@ class Star:
         F_star = (((np.pi * u.sr) * B_lambda_star * ( self.R_star / system_distance )**2)) 
 
         return F_star
+    
+    def read_spectrum(self, spectrum_file):
+        '''
+        Function to read in stellar spectrum from a file.
+        File should be in two column format with wavelength in first 
+        column and spectrum in second. 
+        TODO: add units
 
+        Parameters
+        ----------
+        spectrum_file : str
+            Full path to file with stellar spectrum.
+        
+        Returns
+        -------
+        wavelength : np.array
+            Array of wavelength values for spectrum
+        spectrum : np.array
+            Array of stellar spectrum values
+        '''
+
+        try:
+            wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True)
+
+            self.wavelength = wavelength
+            self.spectrum = spectrum
+            return wavelength, spectrum
+
+        except (IndexError, ValueError, SyntaxError) as e:
+            raise ValueError("Error processing file: ensure it is in the correct format.") from e     
+        
+    def interp_spectrum(self, wavelength_to_interp):
+        '''
+        Map stellar spectrum to another wavelength range (should be planet spectrum wavelength range)
+
+        Parameters
+        ----------
+        wavelength_to_interp : np.ndarray
+            Wavelength range to interpolate to [TODO: add units]
+
+        Returns
+        -------
+        flux : np.ndarray
+            Interpolated flux values of stellar spectrum at new wavelength range
+        '''
+        flux = np.interp(wavelength_to_interp, self.wavelength, self.spectrum) 
+
+        return flux
+        
 class Planet:
     def __init__(self, R_p, Ag):
         '''
@@ -150,14 +200,205 @@ class Planet:
         '''
         Ag = np.random.uniform(Ag_min, Ag_max, n_planets)
         return Ag
+    
+    def read_spectrum(self, spectrum_file):
+        '''
+        Function to read in planet spectrum from a file.
+        Spectrum should be in some text file with first column
+        giving wavelength values and second giving albedo spectrum
+        TODO: add units
+
+        Parameters
+        ----------
+        spectrum_file : str
+            Full path to file with planet spectrum.
+
+        Returns
+        -------
+        wavelength : np.array
+            Array of wavelength values for spectrum
+        spectrum : np.array
+            Array of planet spectrum values
+        
+        '''
+        try:
+            wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True)
+
+            self.wavelength = wavelength
+            self.spectrum = spectrum
+            return wavelength, spectrum
+
+        except (IndexError, ValueError, SyntaxError) as e:
+            raise ValueError("Error processing file: ensure it is in the correct format.") from e     
+
+
+class Filters:
+    def __init__(self, filter_file):
+        '''
+        Class for the filter curves of the detector.
+
+        Parameters
+        ----------  
+        filter_file : str
+            Path to filter file.
+
+        '''
+        self.filter_file = filter_file
+
+    def read_filter_curves(self):
+        '''
+        Function to read in filter curves for the detector. 
+        Filters should have min/max wavelength for bandpass and throughput: e.g., 
+            roman_bands = {"575":{"min_lambda": 0.546, "max_lambda": 0.603, "thru": 0.01},
+                           "659":{"min_lambda": 0.604, "max_lambda": 0.715, "thru": 0.01}}
+
+        Parameters
+        ----------
+        filter_file : str
+            Path to txt file with filter info.
+        
+        Returns
+        -------
+        filters : dict
+            Dictionary of filter curves.
+
+        '''
+        with open(self.filter_file, 'r') as file:
+            data = file.read()
+            
+        try:
+            dict_str = data.split('=', 1)[1].strip()
+            filters = ast.literal_eval(dict_str)
+        except (IndexError, ValueError, SyntaxError) as e:
+            raise ValueError("Error processing file: ensure it is in the correct format.") from e
+
+        self.filters = filters # Add filters dict to detector object
+
+        return filters
+    
+    def lambda_range(self, filter_name, filters):
+        '''
+        Function to get the min/max wavelengths of a filter from the filter dictionary.
+        
+        Parameters
+        ----------
+        filter_name : str
+            Name of filter to get min/max wavelengths for.
+
+        filters : dict
+            Dictionary of filter curves.
+
+        Returns
+        -------
+        min_lambda : float
+            Minimum wavelength of passband
+
+        max_lambda : float
+            Maximum wavelength of passband
+        
+        '''
+        
+        # Get min/max wavelengths from passbands
+        min_lambda = np.min([filters[filter_name]['min_lambda']])
+        max_lambda = np.max([filters[filter_name]['max_lambda']])
+
+        self.filter_name = filter_name
+        self.min_lambda = min_lambda
+        self.max_lambda = max_lambda
+
+        return min_lambda, max_lambda
+    
+    def spectrum_in_filter(self, wavelength, spectrum):
+        '''
+        Get the spectrum of the object in the filter bandpass
+
+        Parameters
+        ----------
+        wavelength : np.ndarray
+            Wavelength of spectrum [TODO: add units]
+        spectrum : np.ndarray
+            Spectrum of object [TODO: add units]
+
+        Returns
+        -------
+        filter_spec : np.ndarray
+            Spectrum of object in filter bandpass [TODO: add units]
+        filter_wavel : np.ndarray   
+            Wavelength of spectrum in filter bandpass [TODO: add units]
+        '''
+
+        # Select spectrum region within filter band
+        filter_spec = spectrum[(wavelength >= self.min_lambda) & (wavelength <= self.max_lambda)] 
+        filter_wavel = wavelength[(wavelength >= self.min_lambda) & (wavelength <= self.max_lambda)]
+
+        return filter_spec, filter_wavel
+
+    def filter_throughput(self, filter_name, wavelength):
+        '''
+        Set throughput of filter on wavelength region of interest.
+
+        Parameters
+        ----------
+        filter_name : str
+            Name of filter to get throughput for.
+        wavelength : np.ndarray
+            Wavelength of object spectrum
+        '''
+        f = wavelength * 0
+        f[(wavelength > self.filters[filter_name]['min_lambda']) & (wavelength < self.filters[filter_name]['max_lambda'])] = self.filters[filter_name]['thru']
+
+        return f
+    
+    def compute_color(self, filter_arr, albedo_spectrum, wavelength, stellar_flux):
+        '''
+        Compute the integral to calculate the color in one filter.
+
+        Parameters
+        ----------
+        filter_arr : np.ndarray
+            Filter throughput array
+        albedo_spectrum : np.ndarray
+            Albedo spectrum of planet
+        wavelength : np.ndarray
+            Wavelength of spectrum
+        stellar_flux : np.ndarray
+            Stellar flux interpolated to planet wavelength grid
+
+        Returns
+        -------
+        f_int : float
+            "Color" in one filter
+        '''
+        f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
+
+        return f_int
+    
+    def compare_bands(self, f1_int, f2_int):
+        '''
+        Compare color in two filters
+
+        Parameters
+        ----------
+        f1_int : float
+            Color in first filter
+        f2_int : float
+            Color in second filter
+
+        Returns
+        -------
+        f1_f2 : float
+            Color comparison
+        '''
+        f1_f2 = -2.5 * np.log10( f1_int / f2_int)
+        return f1_f2
+
 
 class Detector:
     '''
     Class for the detecting instrument.
     '''
     def __init__(self, qe, cic, dark_current, read_noise, gain, fwc, conversion_gain, t,
-                 D, throughput, f_pa, wavelength, bandwidth, stability_constant,
-                 passbands=None):
+                 D, throughput, f_pa, wavelength, bandwidth, passbands=None):
         '''
         Detector parameters
 
@@ -190,8 +431,6 @@ class Detector:
             Wavelength of observation [m]
         bandwidth : float
             bandwidth of wavelength band [m]
-        stability_constant : float
-            Constant to simulate stability of telescope [unitless] (higher -> less stable)
 
         '''
         self.qe = qe
@@ -207,27 +446,8 @@ class Detector:
         self.f_pa = f_pa
         self.wavelength = wavelength
         self.bandwidth = bandwidth
-        self.stability_constant = stability_constant
 
         self.calc_FWHM(self.wavelength, self.D)
-
-    def add_passbands(self, passbands):
-        '''
-        Function to add passbands to the detector object.
-
-        Parameters
-        ----------
-        passbands : dict
-            Dictionary of passbands with keys as the central wavelength of the filter.
-            Format: {"575":{"min_lambda": 0.546,
-                       "max_lambda": 0.603,
-                       "thru": 0.01},
-                    "659":{"min_lambda": 0.596,
-                       "max_lambda": 0.715,
-                       "thru": 0.01}
-                    }
-        '''
-        self.passbands = passbands
 
     def calc_FWHM(self, wavelength, D):
         '''
@@ -246,7 +466,7 @@ class Detector:
         float
             estimated FWHM in arcseconds
         '''
-        FWHM_rad = (1.029 * u.rad) * (wavelength / D) 
+        FWHM_rad = (wavelength / D) * u.rad
         FWHM_as = FWHM_rad.to(u.arcsecond).value 
         self.FWHM = FWHM_as 
 
@@ -473,19 +693,22 @@ def calc_SNR(C_p, C_b):
 
     return SNR
 
-def sigma_photo(stability_constant, FWHM, SNR, SNR_low_lim=2, sigma_lim=0.01):
+def sigma_photo(FWHM, SNR, SNR_low_lim=2, sigma_lim=0.03):
     '''
     Positional uncertainty due to detected signal.
     Set to maximum uncertainty constant if SNR is below some lower limit. 
 
     Parameters
     ----------
-    stability_constant : float
-        Float that roughly describes the pointing stability of the telescope.
     FWHM : float
         FWHM of system of interest in units of arcseconds
     SNR : float
         signal-to-noise ratio of detection
+    SNR_low_lim : float
+        Lower limit on SNR for setting limit on uncertainty.
+        Default = 2
+    sigma_lim : float
+        Upper limit on uncertainty in units of arcseconds.
 
     Returns
     -------
@@ -497,7 +720,7 @@ def sigma_photo(stability_constant, FWHM, SNR, SNR_low_lim=2, sigma_lim=0.01):
         sigma_subarr = []
         for snr in arr: # for each detection
             if snr >= SNR_low_lim:
-                sigma = stability_constant * FWHM / snr
+                sigma = FWHM / snr
             else:
                 sigma = sigma_lim
             sigma_subarr.append(sigma)
@@ -532,7 +755,7 @@ def astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim, sigma_lim):
     np.ndarray
         Astrometric uncertainty in units of AU
     '''
-    sigma_as = sigma_photo(detector.stability_constant, detector.FWHM, SNRs, SNR_low_lim, sigma_lim)
+    sigma_as = sigma_photo(detector.FWHM, SNRs, SNR_low_lim, sigma_lim)
     sigma_AU = arcsec_to_AU(sigma_as, star.d_system)
 
     return sigma_AU
