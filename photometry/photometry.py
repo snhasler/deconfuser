@@ -688,7 +688,7 @@ def calc_SNR(C_p, C_b):
     '''
 
     # Compute total noise and SNR
-    C_noise = np.sqrt( C_p + (2 * C_b) ) # counts due to noise
+    C_noise = np.sqrt( C_p + C_b )       # counts due to noise
     SNR = C_p / C_noise                  # planet counts / noise
 
     return SNR
