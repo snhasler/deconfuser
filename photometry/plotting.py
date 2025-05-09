@@ -139,6 +139,7 @@ class Plotting:
                 i += 1
                 
             # plot partition orbit options
+            j = 0
             for index, row in partition_df.iterrows(): # iterate over each planet in the partition
                 # calculate orbit track
                 xs_more, ys_more, zs_more = sample_planets.get_observations(float(row['top_a']), float(row['top_e']),
@@ -146,7 +147,8 @@ class Plotting:
                                                                         float(row['top_O']), float(row['top_M0']),
                                                                         2*np.pi*np.sqrt(float(row['top_a'])**3/self.mu)*np.arange(0,1,0.01), 
                                                                         self.mu)
-                plt.plot(xs_more[0], ys_more[0], linewidth=3, alpha=0.5)
+                plt.plot(xs_more[0], ys_more[0], linewidth=3, alpha=0.5, c=self.colors[j])
+                j += 1
 
                 
             plt.scatter(0, 0, marker='*', color='gold', s=150)
@@ -428,8 +430,10 @@ class Plotting:
         system_numbers = self.df_all['system'].unique() # get systems in dataframe
         # Iterate over systems
         for system in system_numbers:
-            xlim = xlims[system-1]
-            ylim = ylims[system-1]
+            if xlims is not None:
+                xlim = xlims[system-1]
+            if ylims is not None:
+                ylim = ylims[system-1]
             print('System number: ', system)
             system_df = self.df_all[(self.df_all.system == system) & (self.df_all.n_orbit_options.isnull())]
             confused_system_df = df_confused[(df_confused.system == system) & (df_confused.n_orbit_options != 0)]
@@ -469,7 +473,7 @@ class Plotting:
                     print('inclination: ', inclination)
                         
                     plt.plot(xs_more[0], ys_more[0], linewidth=3, color=self.colors[j], alpha=0.75,
-                            label=f"$a_{j+1}$={row['top_a']:.2f} AU\n$e_{j+1}$={row['top_e']:.2f}\n$i_{j+1}$={inclination:.2f}°")#\n$L_{j+1}$={row['L_orbit']:.4f}")
+                            label=f"$a_{j+1}$={row['top_a']:.2f} AU\n$e_{j+1}$={row['top_e']:.2f}\n$i_{j+1}$={inclination:.2f}°\n$L_{j+1}$={row['L_orbit']:.3e}")
                     print(f"a={row['top_a']:.3f}, e={row['top_e']:.3f}, i={inclination:.3f}")
                     j += 1
                 
@@ -477,7 +481,7 @@ class Plotting:
                 plt.legend(bbox_to_anchor=(1.05,-0.15), ncols=3)
                 if plot_title:
                     if L_in_title:
-                        plt.title(f'Possible Orbits #{i_title+1} (L={L_partition:.3e})')
+                        plt.title(f'System {system}\nPossible Orbits #{i_title+1} (L={L_partition:.3e})')
                     else:
                         system_title = system
                         if system == 11:
@@ -487,10 +491,12 @@ class Plotting:
 
                 plt.xlabel('x (AU)')
                 plt.ylabel('y (AU)')
-                plt.ylim(ylim)
-                plt.xlim(xlim)
+                if ylims is not None:
+                    plt.ylim(ylim)
+                if xlims is not None:
+                    plt.xlim(xlim)
                 if save_plot:
-                    plt.savefig(save_path+f'_system{system}_partition{n_partition}.png', 
+                    plt.savefig(save_path+f'system{system}_partition{n_partition}.png', 
                                 dpi='figure', bbox_inches='tight')
                 plt.show()
                 n_partition += 1
