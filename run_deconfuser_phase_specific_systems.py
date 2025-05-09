@@ -25,7 +25,8 @@ n_epochs = 3
 cadence = 0.5
 verbose = True
 sigma_photo = True
-tolerances = [0.10]
+plot = False
+tolerances = [0.20]
 n_systems = 11
 
 # Deconfuser parameters
@@ -40,16 +41,19 @@ spread_i_O = 0.0 # spread of inclination and LAN in radians
 ranking_path = "/Users/shasler/Code/deconfuser/output_files/ranking_files/"
 # signal-dependent uncertianty parameters
 SNR_lower_lim = 2.0
+# TODO: Change sigma_lim depending on planet type/distance
 sigma_lim = 0.015 # max uncertainty in astrometry due to SNR
 
 start = datetime.now()
 now = start.strftime("%Y-%m-%d_%H%M%S") # for text file
 
 # File with systems to run
-# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_lowi.txt" # low inclination systems
-# systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_medi.txt" # med incl. systems
-systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_highi.txt" # high incl. systems
-inc_group = "highi" # lowi, 
+inc_group = "highi" # options: lowi, medi, highi
+systems_orb_params_file = f"/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_{inc_group}.txt" # change inc_group to change file of interest
+if inc_group == "lowi":
+    skip_footer = 0
+else:
+    skip_footer = 1 # skip last line of file for highi and medi groups as there is a note there
 
 # Output file path
 path = "/Users/shasler/Code/deconfuser/output_files/"
@@ -62,7 +66,7 @@ sys.stdout = logfile # redirect output to log file
 sys.stderr = logfile # redirect error output to log file also
 # ------------------------------------------------------------
 # Read in systems
-df_system_params = pd.read_csv(systems_orb_params_file, header=0, delimiter=', ', skipfooter=1)
+df_system_params = pd.read_csv(systems_orb_params_file, header=0, delimiter=', ', skipfooter=skip_footer)
 
 # Write headers to text file
 writer = csv.writer(f)
@@ -78,9 +82,12 @@ writer.writerow(headers) # add headers to file
 system = phot.System(n_exozodi=4/3600, n_leakage=20/3600, n_zodi=2/3600) # background count contributions in units of s^-1
 star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu) # system distance in parsecs -- values for the Sun
 planet = phot.Planet(R_p=6.371e6, Ag=0.3)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
-detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
-                    fwc=80000, conversion_gain=1.0, t=1.8e7, D=2.36, throughput=0.38, f_pa=0.039,
-                    wavelength=573.8e-9, bandwidth=56.5e-9) 
+# detector = phot.Detector(qe=0.837, cic=0.016, dark_current=1.3e-4, read_noise=120, gain=1000, 
+#                     fwc=80000, conversion_gain=1.0, t=2e6, D=2.36, throughput=0.38, f_pa=0.039,
+#                     wavelength=573.8e-9, bandwidth=56.5e-9) 
+detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, 
+                    fwc=10000000, conversion_gain=1.0, t=20*3600, D=6, throughput=0.05, f_pa=0.87,
+                    wavelength=550e-9, bandwidth=50e-9) 
 
 #observation epochs (years)
 ts = cadence*np.arange(n_epochs)
@@ -101,7 +108,8 @@ orbit_fitters = [orbit_fitting.OrbitFitter(mu, ts, min_a-tol, max_a+tol, max_e, 
 orbit_fitter = orbit_fitting.OrbitFitter(mu, ts, min_a-tol, max_a+tol, max_e, tol) # TODO: remove later -- SH added
 
 for _ in range(n_systems):
-    fig, ax = plt.subplots() # TODO: remove
+    if plot:
+        fig, ax = plt.subplots() # TODO: remove
     #%% -------------------- Generate simulated systems --------------------
     print(f'\nSystem #{_+1} \n----------') # outputs which number system for readability
 
@@ -135,15 +143,14 @@ for _ in range(n_systems):
     observations[:,1] += noise_r*np.sin(noise_a) # y-direction error 
         # observations format: array([[group1_x, group1_y, group1_z], [group2_x, ..., ...], [groupN_x, groupN_y, groupN_z]])
         # observations are the x,y,z coordinates for each of the orbit groupings, which potential orbital parameters are drawn from
-
-    ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', label='original position') # TODO: remove
-    ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k') # TODO: remove
-    ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k') # TODO: remove
-    ax.plot(obs_more[:,0][:t_range], obs_more[:,1][:t_range], color='k', alpha=0.7)
-    ax.plot(obs_more[:,0][t_range:t_range*2], obs_more[:,1][t_range:t_range*2], color='k', alpha=0.7)
-    ax.plot(obs_more[:,0][t_range*2:], obs_more[:,1][t_range*2:], color='k', alpha=0.7)
+    if plot:
+        ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', label='original position') # TODO: remove
+        ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k') # TODO: remove
+        ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k') # TODO: remove
+        ax.plot(obs_more[:,0][:t_range], obs_more[:,1][:t_range], color='k', alpha=0.7)
+        ax.plot(obs_more[:,0][t_range:t_range*2], obs_more[:,1][t_range:t_range*2], color='k', alpha=0.7)
+        ax.plot(obs_more[:,0][t_range*2:], obs_more[:,1][t_range*2:], color='k', alpha=0.7)
     xs_original = observations[:,0].flatten()
-    print('xs_original: ', xs_original)
     ys_original = observations[:,1].flatten()
 
     # first adjust coordinates for use in get_detections_counts function
@@ -167,25 +174,27 @@ for _ in range(n_systems):
         observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
 
         # TODO: remove plotting
-        ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
-                   linewidth=1, alpha=0.5, label='with photo/astro err', zorder=3)
-        ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
-                   linewidth=1,  alpha=0.5, zorder=3)
-        ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
-                   linewidth=1,  alpha=0.5, zorder=3) 
+        if plot:
+            ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
+                    linewidth=1, alpha=0.5, label='with SNR-dependent err', zorder=3)
+            ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
+                    linewidth=1,  alpha=0.5, zorder=3)
+            ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
+                    linewidth=1,  alpha=0.5, zorder=3) 
 
-        for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
-            circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
-            # ^ zi*2 = 2-sigma uncertainty radius size
-            ax.add_patch(circle)
+            for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
+                circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
+                # ^ zi = 1-sigma uncertainty radius size
+                ax.add_patch(circle)
 
-    ax.scatter(0, 0, marker='*', color='gold', s=100)
-    ax.set_xlabel('x (AU)')
-    ax.set_ylabel('y (AU)')
-    ax.set_aspect('equal')
-    plt.legend()
-    plt.title('Detections with vs. without\njoint astro/photo error')
-    plt.show()
+    if plot:
+        ax.scatter(0, 0, marker='*', color='gold', s=100)
+        ax.set_xlabel('x (AU)')
+        ax.set_ylabel('y (AU)')
+        ax.set_aspect('equal')
+        plt.legend()
+        plt.title(f'System {_+1}: Detections with vs. without\njoint astro/photo error')
+        plt.show()
 
 
     if verbose:
@@ -227,7 +236,12 @@ for _ in range(n_systems):
 
         #find all partitions of observations to exactly n_planets groups
         #note that since all partial grouping were filtered out, all partitions will have exactly n_planets groups
-        top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
+        try:
+            top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
+        except:
+            if len(groupings) == 0:
+                top_partitions = []
+                print("No groups which contain all epochs of observation.")
 
         if found_correct < n_planets:
             for ip in range(n_planets):
