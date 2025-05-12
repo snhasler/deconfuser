@@ -48,7 +48,7 @@ start = datetime.now()
 now = start.strftime("%Y-%m-%d_%H%M%S") # for text file
 
 # File with systems to run
-inc_group = "highi" # options: lowi, medi, highi
+inc_group = "lowi" # options: lowi, medi, highi
 systems_orb_params_file = f"/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_{inc_group}.txt" # change inc_group to change file of interest
 if inc_group == "lowi":
     skip_footer = 0
