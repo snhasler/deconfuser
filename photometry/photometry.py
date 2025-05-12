@@ -297,45 +297,16 @@ class Filters:
             Maximum wavelength of passband
         
         '''
-        
         # Get min/max wavelengths from passbands
         min_lambda = np.min([filters[filter_name]['min_lambda']])
         max_lambda = np.max([filters[filter_name]['max_lambda']])
 
-        self.filter_name = filter_name
-        self.min_lambda = min_lambda
-        self.max_lambda = max_lambda
-
         return min_lambda, max_lambda
-    
-    def spectrum_in_filter(self, wavelength, spectrum):
-        '''
-        Get the spectrum of the object in the filter bandpass
-
-        Parameters
-        ----------
-        wavelength : np.ndarray
-            Wavelength of spectrum [TODO: add units]
-        spectrum : np.ndarray
-            Spectrum of object [TODO: add units]
-
-        Returns
-        -------
-        filter_spec : np.ndarray
-            Spectrum of object in filter bandpass [TODO: add units]
-        filter_wavel : np.ndarray   
-            Wavelength of spectrum in filter bandpass [TODO: add units]
-        '''
-
-        # Select spectrum region within filter band
-        filter_spec = spectrum[(wavelength >= self.min_lambda) & (wavelength <= self.max_lambda)] 
-        filter_wavel = wavelength[(wavelength >= self.min_lambda) & (wavelength <= self.max_lambda)]
-
-        return filter_spec, filter_wavel
 
     def filter_throughput(self, filter_name, wavelength):
         '''
         Set throughput of filter on wavelength region of interest.
+        Use if you do not have a filter curve to read in.
 
         Parameters
         ----------
@@ -348,50 +319,74 @@ class Filters:
         f[(wavelength > self.filters[filter_name]['min_lambda']) & (wavelength < self.filters[filter_name]['max_lambda'])] = self.filters[filter_name]['thru']
 
         return f
-    
-    def compute_color(self, filter_arr, albedo_spectrum, wavelength, stellar_flux):
-        '''
-        Compute the integral to calculate the color in one filter.
 
-        Parameters
-        ----------
-        filter_arr : np.ndarray
-            Filter throughput array
-        albedo_spectrum : np.ndarray
-            Albedo spectrum of planet
-        wavelength : np.ndarray
-            Wavelength of spectrum
-        stellar_flux : np.ndarray
-            Stellar flux interpolated to planet wavelength grid
+def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
+    '''
+    Get the spectrum of the object in the filter bandpass
 
-        Returns
-        -------
-        f_int : float
-            "Color" in one filter
-        '''
-        f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
+    Parameters
+    ----------
+    wavelength : np.ndarray
+        Wavelength of spectrum [TODO: add units]
+    spectrum : np.ndarray
+        Spectrum of object [TODO: add units]
 
-        return f_int
-    
-    def compare_bands(self, f1_int, f2_int):
-        '''
-        Compare color in two filters
+    Returns
+    -------
+    filter_spec : np.ndarray
+        Spectrum of object in filter bandpass [TODO: add units]
+    filter_wavel : np.ndarray   
+        Wavelength of spectrum in filter bandpass [TODO: add units]
+    '''
 
-        Parameters
-        ----------
-        f1_int : float
-            Color in first filter
-        f2_int : float
-            Color in second filter
+    # Select spectrum region within filter band
+    filter_spec = spectrum[(wavelength >= min_lambda) & (wavelength <= max_lambda)] 
+    filter_wavel = wavelength[(wavelength >= min_lambda) & (wavelength <= max_lambda)]
 
-        Returns
-        -------
-        f1_f2 : float
-            Color comparison
-        '''
-        f1_f2 = -2.5 * np.log10( f1_int / f2_int)
-        return f1_f2
+    return filter_spec, filter_wavel
 
+def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
+    '''
+    Compute the integral to calculate the color in one filter.
+
+    Parameters
+    ----------
+    filter_arr : np.ndarray
+        Filter throughput array
+    albedo_spectrum : np.ndarray
+        Albedo spectrum of planet
+    wavelength : np.ndarray
+        Wavelength of spectrum
+    stellar_flux : np.ndarray
+        Stellar flux interpolated to planet wavelength grid
+
+    Returns
+    -------
+    f_int : float
+        "Color" in one filter
+    '''
+    f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
+
+    return f_int
+
+def compare_bands(f1_int, f2_int):
+    '''
+    Compare color in two filters
+
+    Parameters
+    ----------
+    f1_int : float
+        Color in first filter
+    f2_int : float
+        Color in second filter
+
+    Returns
+    -------
+    f1_f2 : float
+        Color comparison
+    '''
+    f1_f2 = -2.5 * np.log10( f1_int / f2_int)
+    return f1_f2
 
 class Detector:
     '''
