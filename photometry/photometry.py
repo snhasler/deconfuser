@@ -71,13 +71,21 @@ class Star:
             Blackbody spectrum value of star at wavelength of interest.
 
         '''
-        wavelength *= u.m   # add units to wavelength
-        h = const.h         # Planck's constant
-        c = const.c         # speed of light
-        k = const.k_B       # boltzmann constant
-        
-        B_lambda_star = ( (2 * h * c**2) / wavelength**5) * \
-                    (1 / ( np.exp((h*c) / (wavelength * k * self.T)) - 1 ) ) / u.sr # blackbody spectrum of star [units: J / s / m^3 / sr] 
+        # Make sure wavelength has astropy units and make sure the units are in meters
+        if not isinstance(wavelength, u.quantity.Quantity):
+            raise ValueError("Input wavelength must be an astropy Quantity with units of meters.")
+        if wavelength.unit != u.m:
+            wavelength = wavelength.to(u.m)
+
+        # Constants
+        h = const.h          # Planck's constant
+        c = const.c          # speed of light
+        k = const.k_B        # boltzmann constant
+
+        num = (2 * h * c**2)
+        denom = wavelength**5 * (np.exp((h * c) / (wavelength * k * self.T)) - 1)
+
+        B_lambda_star = (( num / (denom) )).to(u.Watt / u.m**2 / u.um) # blackbody spectrum of star [ units: W / m^2 / um ] 
 
         return B_lambda_star
     
@@ -97,7 +105,7 @@ class Star:
 
         '''
         system_distance = self.d_system.to(u.m) # convert to meters
-        F_star = (((np.pi * u.sr) * B_lambda_star * ( self.R_star / system_distance )**2)) 
+        F_star = ((np.pi * B_lambda_star * ( self.R_star / system_distance )**2)) 
 
         return F_star
     
@@ -106,7 +114,6 @@ class Star:
         Function to read in stellar spectrum from a file.
         File should be in two column format with wavelength in first 
         column and spectrum in second. 
-        TODO: add units
 
         Parameters
         ----------
@@ -122,7 +129,7 @@ class Star:
         '''
 
         try:
-            wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True)
+            wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True, usecols=(0,1))
 
             self.wavelength = wavelength
             self.spectrum = spectrum
@@ -130,24 +137,35 @@ class Star:
 
         except (IndexError, ValueError, SyntaxError) as e:
             raise ValueError("Error processing file: ensure it is in the correct format.") from e     
-        
-    def interp_spectrum(self, wavelength_to_interp):
+    
+    def flux_in_filter(self, filter_lambda, filter_transmission, lambda_min, lambda_max):
         '''
-        Map stellar spectrum to another wavelength range (should be planet spectrum wavelength range)
+        Convolve stellar spectrum with filter bandpass to get flux in filter bandpass.
 
         Parameters
         ----------
-        wavelength_to_interp : np.ndarray
-            Wavelength range to interpolate to [TODO: add units]
+        filter_lambda : np.ndarray
+            Wavelength array of filter bandpass in same units
+            as stellar spectrum
+        filter_transmission : np.ndarray
+            Filter transmission array with same length as lambda_filter
+        lambda_min : float
+            Minimum wavelength of filter bandpass
+        lambda_max : float
+            Maximum wavelength of filter bandpass
 
         Returns
         -------
         flux : np.ndarray
-            Interpolated flux values of stellar spectrum at new wavelength range
+            Integrated band flux of star in filter bandpass in same units as stellar spectrum
         '''
-        flux = np.interp(wavelength_to_interp, self.wavelength, self.spectrum) 
+        # Interpolate solar spectrum to filter wavelength grid
+        spectrum_in_filter = self.interp_spectrum(filter_lambda)
 
-        return flux
+        # Calculate filter flux
+        filter_flux = np.trapz(spectrum_in_filter * filter_transmission, filter_lambda) / np.trapz(filter_transmission, filter_lambda)
+
+        return filter_flux
         
 class Planet:
     def __init__(self, R_p, Ag):
@@ -206,7 +224,6 @@ class Planet:
         Function to read in planet spectrum from a file.
         Spectrum should be in some text file with first column
         giving wavelength values and second giving albedo spectrum
-        TODO: add units
 
         Parameters
         ----------
@@ -231,6 +248,17 @@ class Planet:
         except (IndexError, ValueError, SyntaxError) as e:
             raise ValueError("Error processing file: ensure it is in the correct format.") from e     
 
+    def add_Fband(self, filter_fluxes):
+        '''
+        Add fluxes in the bandpass of observation to planet object.
+        
+        Parameters
+        ----------
+        filter_flux : np.ndarray
+            Filter flux values for planet spectrum per detection.
+        '''
+
+        self.filter_flux = filter_fluxes
 
 class Filters:
     def __init__(self, filter_file):
@@ -320,30 +348,30 @@ class Filters:
 
         return f
 
-def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
-    '''
-    Get the spectrum of the object in the filter bandpass
+# def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
+#     '''
+#     Get the spectrum of the object in the filter bandpass
 
-    Parameters
-    ----------
-    wavelength : np.ndarray
-        Wavelength of spectrum [TODO: add units]
-    spectrum : np.ndarray
-        Spectrum of object [TODO: add units]
+#     Parameters
+#     ----------
+#     wavelength : np.ndarray
+#         Wavelength of spectrum [TODO: add units]
+#     spectrum : np.ndarray
+#         Spectrum of object [TODO: add units]
 
-    Returns
-    -------
-    filter_spec : np.ndarray
-        Spectrum of object in filter bandpass [TODO: add units]
-    filter_wavel : np.ndarray   
-        Wavelength of spectrum in filter bandpass [TODO: add units]
-    '''
+#     Returns
+#     -------
+#     filter_spec : np.ndarray
+#         Spectrum of object in filter bandpass [TODO: add units]
+#     filter_wavel : np.ndarray   
+#         Wavelength of spectrum in filter bandpass [TODO: add units]
+#     '''
 
-    # Select spectrum region within filter band
-    filter_spec = spectrum[(wavelength >= min_lambda) & (wavelength <= max_lambda)] 
-    filter_wavel = wavelength[(wavelength >= min_lambda) & (wavelength <= max_lambda)]
+#     # Select spectrum region within filter band
+#     filter_spec = spectrum[(wavelength >= min_lambda) & (wavelength <= max_lambda)] 
+#     filter_wavel = wavelength[(wavelength >= min_lambda) & (wavelength <= max_lambda)]
 
-    return filter_spec, filter_wavel
+#     return filter_spec, filter_wavel
 
 def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
     '''
@@ -387,6 +415,23 @@ def compare_bands(f1_int, f2_int):
     '''
     f1_f2 = -2.5 * np.log10( f1_int / f2_int)
     return f1_f2
+
+def convert_ergcm2s_ergm2s(value):
+    '''
+    Convert erg/cm^2/s to erg/m^2/s
+
+    Parameters
+    ----------
+    value : float
+        Value in erg/cm^2/s
+
+    Returns
+    -------
+    value_m2 : float
+        Value in erg/m^2/s
+    '''
+    value_m2 = value * 1e4 # convert cm^2 to m^2
+    return value_m2
 
 class Detector:
     '''
@@ -630,7 +675,7 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         phase_function.append(lambert_phase)
         
         # --------- Planet flux density ---------
-        # See Robinson+2016
+        # TODO: update this for color (add F_planet option to function; "if F_planet, then use that value, else calculate it as below")
         F_planet = np.pi * Planet.Ag * lambert_phase * B_lambda_star*u.sr * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
         Fp.append(F_planet.value)
 
@@ -641,7 +686,12 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         # --------- Convert to planet counts ---------
         c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength*u.m / (const.h * const.c)) * F_planet * Detector.bandwidth*u.m * (Detector.D*u.m / 2)**2
         planet_counts.append(c_p.value)
-        
+        print('Fp * throughput * bandwidth: ', F_planet * Detector.throughput * Detector.bandwidth) # TODO: remove
+    print('Fp: ', Fp) # TODO: remove 
+    print('Fstar: ', F_star)
+    print('fpfs: ', fpfs)
+    print('Fp/Fstar: ', Fp / F_star)
+
     return phases, phase_function, fpfs, planet_counts 
 
 def separate_xyzs(xyzs_array):
@@ -825,8 +875,6 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
         # ----------- Calculate phase and intensity information -----------
         phases, phase_func, fpfs, photon_counts = get_planet_count_rate(Planet, Star, Detector, xs=xs, 
                                                                        ys=ys, zs=zs)
-        # print('phases: ', phases)
-        # print('photon_rates: ', photon_counts)
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_counts)
         phases_sys.append(phases)
