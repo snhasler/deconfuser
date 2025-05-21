@@ -305,7 +305,8 @@ for _ in range(args.n_systems):
     # TODO: remove -----
     all_phases.append(phases)
     all_SNRs.append(SNRs)
-    all_sigma.append(sigma_AU)
+    if args.sigma_photo:
+        all_sigma.append(sigma_AU)
     # ^ --------------
 
 # Re-rank systems with photometry
