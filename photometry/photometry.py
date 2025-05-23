@@ -217,6 +217,8 @@ class Planet:
             Number of planets to sample Ag for
         '''
         Ag = np.random.uniform(Ag_min, Ag_max, n_planets)
+        self.Ag = Ag
+
         return Ag
     
     def read_spectrum(self, spectrum_file):
@@ -248,17 +250,17 @@ class Planet:
         except (IndexError, ValueError, SyntaxError) as e:
             raise ValueError("Error processing file: ensure it is in the correct format.") from e     
 
-    def add_Fband(self, filter_fluxes):
-        '''
-        Add fluxes in the bandpass of observation to planet object.
+    # def add_Fband(self, filter_fluxes):
+    #     '''
+    #     Add fluxes in the bandpass of observation to planet object.
         
-        Parameters
-        ----------
-        filter_flux : np.ndarray
-            Filter flux values for planet spectrum per detection.
-        '''
+    #     Parameters
+    #     ----------
+    #     filter_flux : np.ndarray
+    #         Filter flux values for planet spectrum per detection.
+    #     '''
 
-        self.filter_flux = filter_fluxes
+    #     self.filter_flux = filter_fluxes
 
 class Filters:
     def __init__(self, filter_file):
@@ -348,97 +350,99 @@ class Filters:
 
         return f
 
-# def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
+def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
+    '''
+    Get the spectrum of the object in the filter bandpass
+
+    Parameters
+    ----------
+    wavelength : np.ndarray
+        Wavelength of spectrum [TODO: add units]
+    spectrum : np.ndarray
+        Spectrum of object [TODO: add units]
+
+    Returns
+    -------
+    filter_spec : np.ndarray
+        Spectrum of object in filter bandpass [TODO: add units]
+    filter_wavel : np.ndarray   
+        Wavelength of spectrum in filter bandpass [TODO: add units]
+    '''
+
+    # Select spectrum region within filter band
+    filter_spec = spectrum[(wavelength >= min_lambda) & (wavelength <= max_lambda)] 
+    filter_wavel = wavelength[(wavelength >= min_lambda) & (wavelength <= max_lambda)]
+
+    return filter_spec, filter_wavel
+
+# def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
 #     '''
-#     Get the spectrum of the object in the filter bandpass
+#     Compute the integral to calculate the color in one filter.
 
 #     Parameters
 #     ----------
+#     filter_arr : np.ndarray
+#         Filter throughput array
+#     albedo_spectrum : np.ndarray
+#         Albedo spectrum of planet in filter
 #     wavelength : np.ndarray
-#         Wavelength of spectrum [TODO: add units]
-#     spectrum : np.ndarray
-#         Spectrum of object [TODO: add units]
+#         Wavelength array of planet spectrum in filter
+#     stellar_flux : np.ndarray
+#         Stellar flux interpolated to planet wavelength grid
 
 #     Returns
 #     -------
-#     filter_spec : np.ndarray
-#         Spectrum of object in filter bandpass [TODO: add units]
-#     filter_wavel : np.ndarray   
-#         Wavelength of spectrum in filter bandpass [TODO: add units]
+#     f_int : float
+#         "Color" in one filter
 #     '''
+#     f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
 
-#     # Select spectrum region within filter band
-#     filter_spec = spectrum[(wavelength >= min_lambda) & (wavelength <= max_lambda)] 
-#     filter_wavel = wavelength[(wavelength >= min_lambda) & (wavelength <= max_lambda)]
+#     return f_int
 
-#     return filter_spec, filter_wavel
+# def compare_bands(f1_int, f2_int):
+#     '''
+#     Compare color in two filters
 
-def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
-    '''
-    Compute the integral to calculate the color in one filter.
+#     Parameters
+#     ----------
+#     f1_int : float
+#         Color in first filter
+#     f2_int : float
+#         Color in second filter
 
-    Parameters
-    ----------
-    filter_arr : np.ndarray
-        Filter throughput array
-    albedo_spectrum : np.ndarray
-        Albedo spectrum of planet
-    wavelength : np.ndarray
-        Wavelength of spectrum
-    stellar_flux : np.ndarray
-        Stellar flux interpolated to planet wavelength grid
+#     Returns
+#     -------
+#     f1_f2 : float
+#         Color comparison
+#     '''
+#     f1_f2 = -2.5 * np.log10( f1_int / f2_int)
+#     return f1_f2
 
-    Returns
-    -------
-    f_int : float
-        "Color" in one filter
-    '''
-    f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
+# def convert_ergcm2s_ergm2s(value):
+#     '''
+#     Convert erg/cm^2/s to erg/m^2/s
 
-    return f_int
+#     Parameters
+#     ----------
+#     value : float
+#         Value in erg/cm^2/s
 
-def compare_bands(f1_int, f2_int):
-    '''
-    Compare color in two filters
-
-    Parameters
-    ----------
-    f1_int : float
-        Color in first filter
-    f2_int : float
-        Color in second filter
-
-    Returns
-    -------
-    f1_f2 : float
-        Color comparison
-    '''
-    f1_f2 = -2.5 * np.log10( f1_int / f2_int)
-    return f1_f2
-
-def convert_ergcm2s_ergm2s(value):
-    '''
-    Convert erg/cm^2/s to erg/m^2/s
-
-    Parameters
-    ----------
-    value : float
-        Value in erg/cm^2/s
-
-    Returns
-    -------
-    value_m2 : float
-        Value in erg/m^2/s
-    '''
-    value_m2 = value * 1e4 # convert cm^2 to m^2
-    return value_m2
+#     Returns
+#     -------
+#     value_m2 : float
+#         Value in erg/m^2/s
+#     '''
+#     value_m2 = value * 1e4 # convert cm^2 to m^2
+#     return value_m2
 
 class Detector:
+    # TODO: function to update detector bandwidth from filter [m]
+
     '''
     Class for the detecting instrument.
     '''
     def __init__(self, qe, cic, dark_current, read_noise, gain, fwc, conversion_gain, t,
-                 D, throughput, f_pa, wavelength, bandwidth, passbands=None):
+                 D, throughput, f_pa, wavelength, bandwidth, filters=None):
         '''
         Detector parameters
 
@@ -471,7 +475,8 @@ class Detector:
             Wavelength of observation [m]
         bandwidth : float
             bandwidth of wavelength band [m]
-
+        filters : Filters object
+            Optional filters object containing information on passbands 
         '''
         self.qe = qe
         self.cic = cic
@@ -480,14 +485,67 @@ class Detector:
         self.gain = gain
         self.fwc = fwc
         self.conversion_gain = conversion_gain
-        self.t = t
-        self.D = D
+        self.t = t 
+        self.D = D * u.m
         self.throughput = throughput
         self.f_pa = f_pa
-        self.wavelength = wavelength
-        self.bandwidth = bandwidth
+        self.wavelength = wavelength * u.m
+        self.bandwidth = bandwidth * u.m
+
+        self.filters = [] # empty dict for appending filter info to
 
         self.calc_FWHM(self.wavelength, self.D)
+
+    def add_filter_info(self, filter_file, filter_name, lambda_units=u.um):
+        '''
+        Function to add filter information to the detector object. 
+        Reads in file with filter wavelength and transmission. 
+
+        Parameters
+        ----------
+
+
+        '''
+        filt_lambda, filt_transmission = np.loadtxt(filter_file, unpack=True)
+        filt_lambda *= lambda_units
+        # If wavelength not in um, convert
+        if lambda_units != u.um:
+            filt_lambda = filt_lambda.to(u.um)
+            
+        # Get filter wavelength range
+        min_lambda, max_lambda = np.min(filt_lambda.value), np.max(filt_lambda.value)
+        # Save filter info
+        filt_dict = {"filter_name": filter_name, "min_lambda": min_lambda, "max_lambda": max_lambda,
+                     "filter_lambda": filt_lambda.value, "filter_transmission": filt_transmission}
+        # Add filter info to detector object
+        self.filters.append(filt_dict)
+
+    def get_filter_info(self, filter_name):
+        '''
+        Retrieve filter info from filters list of dicts.
+
+        Parameters
+        ----------
+        filter_name : string
+            Name of filter contained in filter 
+            
+        filter_data : dict
+            Dictionary containing filter info for filter of interest. 
+            Contains 'filter_name', 'min_lambda', 'max_lambda', 'filter_lambda', and
+            'filter_transmission' keywords.
+
+        '''
+        # Retrieve info for filter of observation
+        filter_data = [f for f in self.filters if f['filter_name'] == filter_name][0]
+
+        # Update bandwidth and wavelength accordingly
+        self.bandwidth = ((filter_data['max_lambda'] - filter_data['min_lambda'])*u.um).to(u.m).value # units: m
+        self.wavelength = (((filter_data['max_lambda'] + filter_data['min_lambda']) / 2)*u.um).to(u.m).value # central wavelength
+
+        max_lambda = filter_data['max_lambda']
+        min_lambda = filter_data['min_lambda']
+
+        return filter_data, min_lambda, max_lambda
 
     def calc_FWHM(self, wavelength, D):
         '''
@@ -506,7 +564,7 @@ class Detector:
         float
             estimated FWHM in arcseconds
         '''
-        FWHM_rad = (wavelength / D) * u.rad
+        FWHM_rad = (wavelength.value / D.value) * u.rad
         FWHM_as = FWHM_rad.to(u.arcsecond).value 
         self.FWHM = FWHM_as 
 
@@ -650,6 +708,104 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         z_planet = zs[0][i] * u.AU
     
         separation.append(np.sqrt(x_planet**2 + y_planet**2 + z_planet**2)) # planet separation from star
+    print('separation: ', separation)
+    # --------- Calculate star values ---------
+    B_lambda_star = Star.blackbody_spec(wavelength=Detector.wavelength) 
+    F_star = Star.stellar_flux(B_lambda_star=B_lambda_star)             # stellar flux density
+
+    # --------- Calculate phase angle, lambert phase function, flux ratio, planet count rate ---------
+    for detection in range(0, len(xs[0])): # For each planet detection
+        # Orbital phase angle
+        planet_vector = (-xs[0][detection], -ys[0][detection], -zs[0][detection]) # planet vector = (0-x_planet, 0-y_planet, 0-z_planet)
+        observer_vector = (0 - xs[0][detection], 0 - ys[0][detection], -observer_distance_AU.value - zs[0][detection])  # observer location = (0,0,-observer_distance) [AU], observer vector = (0 - x_planet, 0 - y_planet, -observer_distance - z_planet)
+        planet_mag = np.linalg.norm(planet_vector) # get magnitude of vector
+        obs_mag = np.linalg.norm(observer_vector)
+
+        # --------- Phase angle ---------
+        phase_angle = np.arccos(np.dot(planet_vector, observer_vector) / (planet_mag * obs_mag)) # calculate phase angle
+        if xs[0][detection] < 0:
+            phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
+        phases.append(np.degrees(phase_angle))
+
+        # --------- Lambert phase function ---------
+        lambert_phase = (np.sin(np.absolute(phase_angle)) + \
+                            (np.pi - np.absolute(phase_angle)) * np.cos(np.absolute(phase_angle))) / np.pi
+        phase_function.append(lambert_phase)
+        
+        # --------- Planet flux density ---------
+        F_planet = np.pi * Planet.Ag * lambert_phase * B_lambda_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
+        Fp.append(F_planet.value)
+
+         # --------- Flux ratio ---------
+        flux_ratio = Planet.Ag * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
+        fpfs.append(flux_ratio.value)
+    
+        # --------- Convert to planet counts ---------
+        # c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength / (const.h * const.c)) * F_planet * Detector.bandwidth * (Detector.D / 2)**2
+        # print('c_p before unit conversion: ', c_p)
+        # Convert F_planet to units of J / s / m^3 first
+        if F_planet.unit != (u.J / u.s / u.m**3):
+            F_planet = F_planet.to(u.J / u.s / u.m**2 / u.m)
+        c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength / (const.h * const.c)) * F_planet * Detector.bandwidth * (Detector.D / 2)**2
+        planet_counts.append(c_p.value)
+
+    # print('Fp: ', Fp) # TODO: remove 
+    # print('Fstar: ', F_star)
+    # print('fpfs: ', fpfs)
+    # print('Fp/Fstar: ', Fp / F_star)
+
+    return phases, phase_function, fpfs, planet_counts 
+
+def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs):
+    '''
+    Function to calculate planetary phase angle and planet counts given x,y,z coordinates on-sky. 
+    Calculates the planet-star flux ratio and converts planet flux density
+    to planet photon count rate on the detector given the filter of observation.
+
+    Parameters
+    ----------
+    Planet : 
+        Object with planet parameters (Ag, R_p)
+    Star : 
+        Object with stellar parameters (R_star, d_system)
+    Detector : detector.Detector
+        Detector object with all parameters defined.
+    xs : numpy.ndarray
+        x-values for planet location from deconfuser.sample_planets.
+            Example: array([x_planet_1, x_planet_2, ..., x_planet_N])
+    ys : numpy.ndarray
+        y-values for planet location from deconfuser.sample_planets.
+            Example: array([y_planet_1, y_planet_2, ..., y_planet_N])
+    zs : numpy.ndarray
+        z-values for planet location from deconfuser.sample_planets.
+            Example: array([z_planet_1, z_planet_2, ..., z_planet_N])
+
+    Returns
+    -------
+    phases : list of floats
+        Phase angles at each planet location.
+    phase_function : list of floats
+        Value of phase function at each planet location.
+    fpfs : list of floats
+        Value of planet-star flux ratio at each planet location.
+    planet_counts : list of floats
+        Value of planet count rate at each planet location.
+
+    '''
+    # Set empty lists for appending later
+    separation, phases, phase_function, Fp, fpfs, Fp_band_all, planet_counts = [], [], [], [], [], [], []
+    
+    # --------- Set constants ---------
+    observer_distance_AU = Star.d_system.to(u.AU)  # units: AU
+    d_system = Star.d_system.to(u.m)               # distance to system in meters
+
+    # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
+    for i in range(0,len(xs[0])):
+        x_planet = xs[0][i] * u.AU                 # all coordinates from deconfuser are in units of AU
+        y_planet = ys[0][i] * u.AU
+        z_planet = zs[0][i] * u.AU
+    
+        separation.append(np.sqrt(x_planet**2 + y_planet**2 + z_planet**2)) # planet separation from star
 
     # --------- Calculate star values ---------
     B_lambda_star = Star.blackbody_spec(wavelength=Detector.wavelength) 
@@ -676,23 +832,38 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         
         # --------- Planet flux density ---------
         # TODO: update this for color (add F_planet option to function; "if F_planet, then use that value, else calculate it as below")
-        F_planet = np.pi * Planet.Ag * lambert_phase * B_lambda_star*u.sr * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
+        F_planet = np.pi * Planet.Ag * lambert_phase * B_lambda_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
+        print(F_planet) # TODO: remove
         Fp.append(F_planet.value)
 
          # --------- Flux ratio ---------
         flux_ratio = Planet.Ag * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
         fpfs.append(flux_ratio.value)
-    
-        # --------- Convert to planet counts ---------
-        c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength*u.m / (const.h * const.c)) * F_planet * Detector.bandwidth*u.m * (Detector.D*u.m / 2)**2
-        planet_counts.append(c_p.value)
-        print('Fp * throughput * bandwidth: ', F_planet * Detector.throughput * Detector.bandwidth) # TODO: remove
-    print('Fp: ', Fp) # TODO: remove 
-    print('Fstar: ', F_star)
-    print('fpfs: ', fpfs)
-    print('Fp/Fstar: ', Fp / F_star)
 
-    return phases, phase_function, fpfs, planet_counts 
+        # ----- Get filter info ---------
+        # filt_transmission, filt_lambda = 
+
+        # ----- Get planet flux in only filter region of interest ---------
+        # Fp_filt, planet_lambda_filt = spectrum_in_filter()
+
+        # ----- Calculate band-averaged flux -----
+        # Fp_band = np.trapz(Fp_filt * filt_transmission, planet_um_filt) / np.trapz(filt_transmission, planet_um_filt) # units: W / m^2 / um
+        # Fp_band_all.append(Fp_band)
+
+        # --------- Convert to planet counts ---------
+        # First convert Fp_band to J / s / m^3
+        if Fp_band.unit != (u.J / u.s / u.m**3):
+            Fp_band = Fp_band.to(u.J / u.s / u.m**2 / u.m)
+        # All wavelengths here need to be in meters; convert to planet counts
+        c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength / (const.h * const.c)) * F_planet * Detector.bandwidth * (Detector.D / 2)**2
+        planet_counts.append(c_p.value) # units: [1 / s]
+        
+    # print('Fp: ', Fp) # TODO: remove 
+    # print('Fstar: ', F_star)
+    # print('fpfs: ', fpfs)
+    # print('Fp/Fstar: ', Fp / F_star)
+
+    # return phases, phase_function, fpfs, planet_counts 
 
 def separate_xyzs(xyzs_array):
     '''
