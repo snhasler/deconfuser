@@ -7,6 +7,8 @@ import numpy as np
 import astropy.constants as const
 import astropy.units as u
 import ast
+import os
+import re
 
 '''
 TODO:
@@ -15,25 +17,53 @@ TODO:
 '''
 
 class System:
-    def __init__(self, n_exozodi, n_leakage, n_zodi):
+    def __init__(self, n_exozodi=0.0, n_leakage=0.0, n_zodi=0.0, name=None):
         '''
         Holds system parameters.
 
         Parameters
         ----------
-        n_exozodi : float
+        n_exozodi : optional, float
             Number of counts per second contributed to the background counts
-            due to exozodi source.
-        n_leakage : float
+            due to exozodi source. Default does not account for exozodi.
+        n_leakage : optional, float
             Number of counts per second contributed to the background counts
-            due to leakage
-        n_zodi : float
+            due to leakage. Default does not account for leakage.
+        n_zodi : optional, float
             Number of counts per second contributed to the background counts
-            due to zodiacal light.
+            due to zodiacal light. Default does not account for zodi.
+        name : optional, int or string
+            Name or number corresponding to planetary system
         '''
         self.n_exozodi = n_exozodi
         self.n_leakage = n_leakage
         self.n_zodi = n_zodi
+
+        self.name = name 
+        self.planets = []
+
+    def add_planet(self, Planet):
+        '''
+        Add planet to the system. 
+        Each planet contains the info for radius, albedo, etc.
+
+        Parameters
+        ----------
+        Planet : photometry.Planet
+            Planet object (see below)
+        '''
+        self.planets.append(Planet)
+
+    def add_star(self, Star):
+        '''
+        Add star to the system.
+
+        Parameters
+        ----------
+        Star : photometry.Star
+            Star object (see below)
+        '''
+        self.star = Star
 
 class Star:
     def __init__(self, T, R_star, d_system, mu):
@@ -108,37 +138,38 @@ class Star:
         '''
         system_distance = self.d_system.to(u.m) # convert to meters
         F_star = ((np.pi * B_lambda_star * ( self.R_star / system_distance )**2)) 
+        self.F_star = F_star
 
         return F_star
     
-    def read_spectrum(self, spectrum_file):
-        '''
-        Function to read in stellar spectrum from a file.
-        File should be in two column format with wavelength in first 
-        column and spectrum in second. 
+    # def read_spectrum(self, spectrum_file):
+    #     '''
+    #     Function to read in stellar spectrum from a file.
+    #     File should be in two column format with wavelength in first 
+    #     column and spectrum in second. 
 
-        Parameters
-        ----------
-        spectrum_file : str
-            Full path to file with stellar spectrum.
+    #     Parameters
+    #     ----------
+    #     spectrum_file : str
+    #         Full path to file with stellar spectrum.
         
-        Returns
-        -------
-        wavelength : np.array
-            Array of wavelength values for spectrum
-        spectrum : np.array
-            Array of stellar spectrum values
-        '''
+    #     Returns
+    #     -------
+    #     wavelength : np.array
+    #         Array of wavelength values for spectrum
+    #     spectrum : np.array
+    #         Array of stellar spectrum values
+    #     '''
 
-        try:
-            wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True, usecols=(0,1))
+    #     try:
+    #         wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True, usecols=(0,1))
 
-            self.wavelength = wavelength
-            self.spectrum = spectrum
-            return wavelength, spectrum
+    #         self.wavelength = wavelength
+    #         self.spectrum = spectrum
+    #         return wavelength, spectrum
 
-        except (IndexError, ValueError, SyntaxError) as e:
-            raise ValueError("Error processing file: ensure it is in the correct format.") from e     
+    #     except (IndexError, ValueError, SyntaxError) as e:
+    #         raise ValueError("Error processing file: ensure it is in the correct format.") from e     
     
     def flux_in_filter(self, filter_lambda, filter_transmission, lambda_min, lambda_max):
         '''
@@ -183,6 +214,7 @@ class Planet:
         '''
         self.R_p = R_p * u.m
         self.Ag = Ag
+        self.type = None # unassigned planet type
 
     def choose_random_Rp(self, R_min, R_max, n_planets):
         '''
@@ -205,7 +237,40 @@ class Planet:
         Rp = np.random.uniform(R_min, R_max, n_planets)
         return Rp
     
-    def choose_random_Ag(self, Ag_min, Ag_max, n_planets):
+    def random_planet_params(self, planet_types=['rocky', 'gas_giant', 'ice_giant']):
+        '''
+        Choose a random planet type from a list and assign it a radius value based on type.
+        Based on planet type, pull the best matching albedo spectrum (based on type and separation)
+
+        Parameters
+        ---------
+        planet_types : list of string
+            List of planet types to choose frome
+        Rps : list of floats
+            List of radii corresponding to list of planet types in Earth radii
+        a_s : list of floats
+            List of semimajor axes of simulated planets
+        n_planets : int
+            Number of planets in the system that need planet types assigned.
+
+        '''
+        R_Earth = 6378e3 # Earth radius in m
+
+        # Choose a random planet type to assign
+        type = np.random.choice(planet_types)
+
+        # Assign radius based on planet type
+        if type == 'rocky':
+            Rp = 1.0 * R_Earth 
+        elif type == 'ice_giant':
+            Rp = 4.0 * R_Earth      # ~R_Uranus
+        elif type == 'gas_giant':
+            Rp = 11.2 * R_Earth     # ~R_Jup
+
+        self.R_p = Rp
+        self.type = type
+            
+    def random_Ag(self, Ag_min, Ag_max, n_planets):
         '''
         Choose random geometric albedo values from a uniform distribution
 
@@ -252,6 +317,81 @@ class Planet:
 
         except (IndexError, ValueError, SyntaxError) as e:
             raise ValueError("Error processing file: ensure it is in the correct format.") from e     
+
+    def add_orb_params(self, a, e, i, o, O, M0):
+        '''
+        Add orbital parameters to planet object.
+
+        Parameters
+        ----------
+        a : float
+            Semi-major axis [AU]
+        e : float
+            Eccentricity
+        i : float 
+            Inclination [rad]
+        o : float
+            Argument of periapsis [rad] 
+        O : float 
+            Argument of ascending node [rad]
+        M0 : float
+            mean anomaly [rad]
+        '''
+        self.a = a
+        self.e = e
+        self.i = i
+        self.o = o
+        self.O = O
+        self.M0 = M0
+
+def get_alb_spec(System, spectrum_dir):
+        '''
+        Get albedo spectrum based on the assigned planet type and its
+        orbital separation. Albedo spectrum files must contain a 
+        substring of the format "1.5AU" or similar to find match.
+        Planets must have assigned type and radius for this to work.
+
+        Parameters
+        ----------
+        System : photometry.System
+            System object containing planets 
+        spectrum_dir : string
+            Path to directory containing folders with planet spectra
+        '''
+        n_planets = len(System.planets) # Get number of planets in system
+
+        # For each planet, pull the spectrum and add it to the planet object
+        for i in range(n_planets):
+            # Get planet object from system object
+            planet = System.planets[i]
+            a = planet.a 
+
+            # Go to the directory of the matching planet type
+            filepath = os.path.join(spectrum_dir + f"{planet.type}/")
+            files = [f for f in os.listdir(filepath) if os.path.isfile(os.path.join(filepath, f))] # get files in folder
+            n_files = len(files) # get number of files in folder
+
+            # If more than one file, find the one with the nearest semimajor axis by
+            # searching the file names which should contain "XAU"
+            file_pattern = re.compile(r"_([\d.]+)AU_")
+            if n_files > 1: 
+                file_au_pairs = []
+                for f in files:
+                    match = file_pattern.search(f) 
+                    if match:
+                        dist = float(match.group(1))
+                        file_au_pairs.append((f, dist))
+
+                # Find file with closest separation value
+                spectrum_file = min(file_au_pairs, key=lambda x: abs(x[1] - a))[0]
+                
+            else:
+                spectrum_file = files[0]
+            planet.spectrum_file = spectrum_file # Save which file was used 
+                
+            # Read albedo spectrum and wavelength into planet object
+            planet.read_albedo_spectrum(os.path.join(filepath, spectrum_file), lambda_units=u.um)
+
 
 class Filters:
     def __init__(self, filter_file):
@@ -366,29 +506,29 @@ def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
 
     return filter_spec, filter_wavel
 
-# def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
-#     '''
-#     Compute the integral to calculate the color in one filter.
+def compute_color(filter_arr, albedo_spectrum, wavelength, stellar_flux):
+    '''
+    Compute the integral to calculate the color in one filter.
 
-#     Parameters
-#     ----------
-#     filter_arr : np.ndarray
-#         Filter throughput array
-#     albedo_spectrum : np.ndarray
-#         Albedo spectrum of planet in filter
-#     wavelength : np.ndarray
-#         Wavelength array of planet spectrum in filter
-#     stellar_flux : np.ndarray
-#         Stellar flux interpolated to planet wavelength grid
+    Parameters
+    ----------
+    filter_arr : np.ndarray
+        Filter throughput array
+    albedo_spectrum : np.ndarray
+        Albedo spectrum of planet in filter
+    wavelength : np.ndarray
+        Wavelength array of planet spectrum in filter
+    stellar_flux : np.ndarray
+        Stellar flux interpolated to planet wavelength grid
 
-#     Returns
-#     -------
-#     f_int : float
-#         "Color" in one filter
-#     '''
-#     f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
+    Returns
+    -------
+    f_int : float
+        "Color" in one filter
+    '''
+    f_int = np.sum(filter_arr[:-1] * albedo_spectrum[:-1] * np.diff(wavelength) * stellar_flux[:-1])
 
-#     return f_int
+    return f_int
 
 # def compare_bands(f1_int, f2_int):
 #     '''
@@ -409,31 +549,12 @@ def spectrum_in_filter(wavelength, spectrum, min_lambda, max_lambda):
 #     f1_f2 = -2.5 * np.log10( f1_int / f2_int)
 #     return f1_f2
 
-# def convert_ergcm2s_ergm2s(value):
-#     '''
-#     Convert erg/cm^2/s to erg/m^2/s
-
-#     Parameters
-#     ----------
-#     value : float
-#         Value in erg/cm^2/s
-
-#     Returns
-#     -------
-#     value_m2 : float
-#         Value in erg/m^2/s
-#     '''
-#     value_m2 = value * 1e4 # convert cm^2 to m^2
-#     return value_m2
-
 class Detector:
-    # TODO: function to update detector bandwidth from filter [m]
-
     '''
-    Class for the detecting instrument.
+    Class for the detector parameters. 
     '''
     def __init__(self, qe, cic, dark_current, read_noise, gain, fwc, conversion_gain, t,
-                 D, throughput, f_pa, wavelength, bandwidth, filters=None):
+                 D, throughput, f_pa, wavelength, bandwidth):
         '''
         Detector parameters
 
@@ -466,8 +587,6 @@ class Detector:
             Wavelength of observation [m]
         bandwidth : float
             bandwidth of wavelength band [m]
-        filters : Filters object
-            Optional filters object containing information on passbands 
         '''
         self.qe = qe
         self.cic = cic
@@ -494,7 +613,13 @@ class Detector:
 
         Parameters
         ----------
-
+        filter_file : string
+            Full path to filter file that contains wavelength array and
+            filter transmission array
+        filter_name : string
+            Name of filter for reference
+        lambda_units : astropy.units.core.PrefixUnit
+            Units of the wavelength array in the filter transmission file
 
         '''
         filt_lambda, filt_transmission = np.loadtxt(filter_file, unpack=True)
@@ -519,12 +644,6 @@ class Detector:
         ----------
         filter_name : string
             Name of filter contained in filter 
-            
-        filter_data : dict
-            Dictionary containing filter info for filter of interest. 
-            Contains 'filter_name', 'min_lambda', 'max_lambda', 'filter_lambda', and
-            'filter_transmission' keywords.
-
         '''
         # Retrieve info for filter of observation
         filter_data = [f for f in self.filters if f['filter_name'] == filter_name][0]
@@ -786,6 +905,9 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     observer_distance_AU = Star.d_system.to(u.AU)  # units: AU
     d_system = Star.d_system.to(u.m)               # distance to system in meters
 
+    # --------- calculate stellar contribution -------
+    Star.blackbody_spec(Planet.wavelength)         # B_star
+
     # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
     for i in range(0,len(xs[0])):
         x_planet = xs[0][i] * u.AU                 # all coordinates from deconfuser are in units of AU
@@ -846,7 +968,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength / (const.h * const.c)) * Fp_band * Detector.bandwidth * (Detector.D / 2)**2
         planet_counts.append(c_p.value) # units: [1 / s]
 
-    return phases, phase_function, fpfs, planet_counts 
+    return phases, phase_function, fpfs, Fp_band_all, planet_counts 
 
 def separate_xyzs(xyzs_array):
     '''
