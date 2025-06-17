@@ -201,16 +201,18 @@ class Star:
         return filter_flux
         
 class Planet:
-    def __init__(self, R_p, Ag):
+    def __init__(self, R_p=6378e3, Ag=0.3):
         '''
         Planet object 
 
         Parameters
         ----------
-        R_p : float
-            Planet's radius [m]
-        Ag : float
-            geometric albedo
+        R_p : float, optional
+            Planet's radius [m], default = Earth radius
+            Can also assign in choose_random_Rp() or random_planet_params()
+        Ag : float, optional
+            geometric albedo, default = Earth Ag
+            Can also assign in random_planet_params()
         '''
         self.R_p = R_p * u.m
         self.Ag = Ag
@@ -224,9 +226,9 @@ class Planet:
         Parameters
         ----------
         R_min : float
-            Minimum radius to sample from
+            Minimum radius to sample from in units of m
         R_max : float
-            Maximum radius to sample from
+            Maximum radius to sample from in units of m
         n_planets : int
             Number of planets to sample radii for
         Returns 
@@ -235,6 +237,7 @@ class Planet:
             Array of length n_planets with planet radii in R_Earth
         '''
         Rp = np.random.uniform(R_min, R_max, n_planets)
+        self.Rp = Rp * u.m
         return Rp
     
     def random_planet_params(self, planet_types=['rocky', 'gas_giant', 'ice_giant']):
@@ -248,26 +251,27 @@ class Planet:
             List of planet types to choose frome
         Rps : list of floats
             List of radii corresponding to list of planet types in Earth radii
-        a_s : list of floats
-            List of semimajor axes of simulated planets
         n_planets : int
             Number of planets in the system that need planet types assigned.
 
         '''
-        R_Earth = 6378e3 # Earth radius in m
+        R_Earth = 6378e3 * u.m # Earth radius in m
 
         # Choose a random planet type to assign
         type = np.random.choice(planet_types)
+        self.type = type
 
         # Assign radius based on planet type
         if type == 'rocky':
-            Rp = 1.0 * R_Earth 
+            self.R_p = 1.0 * R_Earth 
+            self.Ag = 0.3 
         elif type == 'ice_giant':
-            Rp = 4.0 * R_Earth      # ~R_Uranus
+            self.R_p = 3.9 * R_Earth      # ~R_Uranus
+            self.Ag = 0.49
         elif type == 'gas_giant':
-            Rp = 11.2 * R_Earth     # ~R_Jup
+            self.R_p = 11.0 * R_Earth     # ~R_Jup
+            self.Ag = 0.53
 
-        self.R_p = Rp
         self.type = type
             
     def random_Ag(self, Ag_min, Ag_max, n_planets):
@@ -344,7 +348,7 @@ class Planet:
         self.O = O
         self.M0 = M0
 
-def get_alb_spec(System, spectrum_dir):
+def get_alb_spectra(System, spectrum_dir): # TODO: move to System class structure?
         '''
         Get albedo spectrum based on the assigned planet type and its
         orbital separation. Albedo spectrum files must contain a 
@@ -649,8 +653,8 @@ class Detector:
         filter_data = [f for f in self.filters if f['filter_name'] == filter_name][0]
 
         # Update bandwidth and wavelength accordingly
-        self.bandwidth = ((filter_data['max_lambda'] - filter_data['min_lambda'])*u.um).to(u.m).value # units: m
-        self.wavelength = (((filter_data['max_lambda'] + filter_data['min_lambda']) / 2)*u.um).to(u.m).value # central wavelength
+        self.bandwidth = ((filter_data['max_lambda'] - filter_data['min_lambda'])*u.um).to(u.m) # units: m
+        self.wavelength = (((filter_data['max_lambda'] + filter_data['min_lambda']) / 2)*u.um).to(u.m) # central wavelength
 
         max_lambda = filter_data['max_lambda']
         min_lambda = filter_data['min_lambda']
@@ -818,7 +822,7 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         z_planet = zs[0][i] * u.AU
     
         separation.append(np.sqrt(x_planet**2 + y_planet**2 + z_planet**2)) # planet separation from star
-    print('separation: ', separation)
+    # print('separation: ', separation)
     # --------- Calculate star values ---------
     B_lambda_star = Star.blackbody_spec(wavelength=Detector.wavelength) 
     F_star = Star.stellar_flux(B_lambda_star=B_lambda_star)             # stellar flux density
@@ -906,7 +910,11 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     d_system = Star.d_system.to(u.m)               # distance to system in meters
 
     # --------- calculate stellar contribution -------
-    Star.blackbody_spec(Planet.wavelength)         # B_star
+    try:
+        Star.blackbody_spec(Planet.wavelength)         # B_star
+    except:
+        print("AttributeError: 'Planet' object has no attribute 'wavelength'.\nUsing Detector.wavelength")
+        Star.blackbody_spec(wavelength=Detector.wavelength)
 
     # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
     for i in range(0,len(xs[0])):
@@ -944,21 +952,24 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         fpfs.append(flux_ratio.value)
 
         # ----- Get filter info ---------
-        filter_data, filter_lambda_min, filter_lambda_max = Detector.get_filter_info(filter_name)
-        filt_transmission, filt_lambda = filter_data['filter_transmission'], filter_data['filter_lambda']
+        if filter_name != None:
+            filter_data, filter_lambda_min, filter_lambda_max = Detector.get_filter_info(filter_name)
+            filt_transmission, filt_lambda = filter_data['filter_transmission'], filter_data['filter_lambda']
 
-        # ----- Get planet flux in only filter region of interest ---------
-        # Planet wavelength must be in units of um
-        Fp_filt, planet_lambda_filt = spectrum_in_filter(Planet.wavelength.value, F_planet, filter_lambda_min, filter_lambda_max)
-        Fp_filts.append(Fp_filt)
+            # ----- Get planet flux in only filter region of interest ---------
+            # Planet wavelength must be in units of um
+            Fp_filt, planet_lambda_filt = spectrum_in_filter(Planet.wavelength.value, F_planet, filter_lambda_min, filter_lambda_max)
+            Fp_filts.append(Fp_filt)
 
-        # Regrid filter points to planet wavelength grid
-        filt_transmission = np.interp(planet_lambda_filt, filt_lambda, filt_transmission)
+            # Regrid filter points to planet wavelength grid
+            filt_transmission = np.interp(planet_lambda_filt, filt_lambda, filt_transmission)
 
-        # ----- Calculate band-averaged flux -----
-        Fp_band = np.trapz(Fp_filt * filt_transmission, planet_lambda_filt) / np.trapz(filt_transmission, planet_lambda_filt) # units: W / m^2 / um
-        Fp_band_all.append(Fp_band)
-
+            # ----- Calculate band-averaged flux -----
+            Fp_band = np.trapz(Fp_filt * filt_transmission, planet_lambda_filt) / np.trapz(filt_transmission, planet_lambda_filt) # units: W / m^2 / um
+            Fp_band_all.append(Fp_band)
+        else:
+            print("No filter specified, using single-band calculation.")
+            Fp_band = F_planet
         # --------- Convert to planet counts ---------
         # First convert Fp_band to J / s / m^3 for c_p
         if Fp_band.unit != (u.J / u.s / u.m**3):
@@ -1118,16 +1129,12 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
             [[X1_1, Y1_1, Z1_1], [X2_1, Y2_1, Z2_1], ..., [XN_M, YN_M, ZN_M]], 
             where N is the number/time of detection and M is the number of 
             planet in the system.
-    Planet : 
+    Planet : photometry.Planet
         Planet object containg information about planet (Ag, R_p)
-    Star :
+    Star : photometry.Star
         Star object containing information about host star (R_star, distance)
-    Detector : 
+    Detector : photometry.Detector
         Detector object containing detecting instrument parameters.
-    wavelength : float, optional
-        Wavelength of observation. 
-    bandwidth : float, optional
-        Bandwidth of observation. 
 
     Returns
     -------
@@ -1135,7 +1142,10 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
         "Simulated detections". Planet detections with detector noise added [e-].
     photon_rates_sys : list
         Calculated photon rates per planet detection [photons/s].
-
+    SNR_sys : list of floats
+        SNR values for each detectoin
+    phases_sys : list of floats
+        Orbital phase corresponding to each detection
     '''
     
     noisy_counts_sys = []
@@ -1160,6 +1170,61 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
         # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
         bkgd_count, C_zod_exozod_lk = Detector.add_noise(System.n_zodi + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
         C_dc = Detector.dark_current * Detector.t                                # Counts due to dark current
+        C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc # background counts
+
+        for count in photon_counts:
+            noisy_count, C_p = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time
+            noisy_counts.append(noisy_count)
+            # calculate SNR of detection
+            SNR = calc_SNR(C_p, C_b)
+            SNRs.append(SNR)
+
+        noisy_counts = np.reshape(np.asarray(noisy_counts), (1,n_detections))
+        noisy_counts_sys.append(noisy_counts[0]) 
+        SNR = np.reshape(np.asarray(SNRs), (1,n_detections))
+        SNR_sys.append(SNR[0])
+        
+    return noisy_counts_sys, photon_rates_sys, SNR_sys, phases_sys
+
+def get_detections_counts_color(n_detections, xyzs, Star, System, Detector, 
+                                filter_name=None): 
+    '''
+    Generates noisy planet detections.
+    Accepts detection coordinates, calculates phase/brightness, adds detector noise.
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    noisy_counts_sys : list
+        "Simulated detections". Planet detections with detector noise added [e-].
+    photon_rates_sys : list
+        Calculated photon rates per planet detection [photons/s].
+
+    '''
+    
+    noisy_counts_sys, photon_rates_sys, SNR_sys, phases_sys = [], [], [], []
+
+    for planet in range(len(System.planets)):
+        # --------- Handle detection coordinates ----------
+        xyzs_planet = xyzs[planet]
+        xs, ys, zs = separate_xyzs(xyzs_planet) 
+        
+        # ----------- Calculate phase and intensity information -----------
+        phases, phase_func, fpfs, Fp_band_all, photon_counts = get_count_rate_from_spectrum(System.planets[planet], 
+                                                                                            Star, Detector, xs=xs, 
+                                                                                            ys=ys, zs=zs, 
+                                                                                            filter_name=filter_name)
+        # ----------- append detections' photon rates to one list ---------
+        photon_rates_sys.append(photon_counts)
+        phases_sys.append(phases)
+        
+        # ----------- Calculate noisy detections ---------
+        noisy_counts, SNRs = [], []
+        # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
+        bkgd_count, C_zod_exozod_lk = Detector.add_noise(System.n_zodi + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
+        C_dc = Detector.dark_current * Detector.t             # Counts due to dark current
         C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc # TODO: should RN be squared?
 
         for count in photon_counts:
