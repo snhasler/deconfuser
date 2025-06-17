@@ -24,10 +24,10 @@ n_planets = 3
 n_epochs = 3
 cadence = 0.5
 verbose = True
-sigma_photo = True
+sigma_photo = False
 plot = False
-tolerances = [0.20]
-n_systems = 11
+tolerances = [0.05]
+n_systems = 1 # 11
 
 # Deconfuser parameters
 max_a = 6.0 # max a [AU]
@@ -49,7 +49,8 @@ now = start.strftime("%Y-%m-%d_%H%M%S") # for text file
 
 # File with systems to run
 inc_group = "lowi" # options: lowi, medi, highi
-systems_orb_params_file = f"/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_{inc_group}.txt" # change inc_group to change file of interest
+# systems_orb_params_file = f"/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/orbparams_10confused_systems_{inc_group}.txt" # change inc_group to change file of interest
+systems_orb_params_file = "/Users/shasler/Documents/Projects/Deconfusion/publication/ten_systems/solar_system_VEMJ.txt"
 if inc_group == "lowi":
     skip_footer = 0
 else:
@@ -57,8 +58,10 @@ else:
 
 # Output file path
 path = "/Users/shasler/Code/deconfuser/output_files/"
-output_file = f"{inc_group}_wPhotoErr_output_tol{tolerances[0]}_{now}.txt"
-run_log =  f"run_log_{inc_group}_wPhotoErr_10systems_tol{tolerances[0]}_{now}.log"
+# output_file = f"{inc_group}_wPhotoErr_output_tol{tolerances[0]}_{now}.txt"
+# run_log =  f"run_log_{inc_group}_wPhotoErr_10systems_tol{tolerances[0]}_{now}.log"
+output_file = f"{inc_group}_SS_VEMJ_output_tol{tolerances[0]}_{now}.txt"
+run_log =  f"run_log_{inc_group}_SS_VEMJ_tol{tolerances[0]}_{now}.log"
 
 f = open(path + output_file, "a")
 logfile = open(path +run_log, "a") 
