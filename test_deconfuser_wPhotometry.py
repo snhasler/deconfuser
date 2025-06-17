@@ -13,6 +13,7 @@ import csv
 import matplotlib.pyplot as plt       # TODO: remove
 from matplotlib.patches import Circle # TODO: remove
 plt.rcParams.update({"font.size":16}) # TODO: remove
+import astropy.units as u
 
 import deconfuser.sample_planets as sample_planets
 import deconfuser.orbit_fitting as orbit_fitting
@@ -79,15 +80,15 @@ writer.writerow([run_parameters]) # save run parameters in file
 writer.writerow(headers)          # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
-system = phot.System(n_exozodi=4/3600, n_leakage=20/3600, n_zodi=2/3600) # exozodi = 4/hr at 1AU sep -- background count contributions in units of s^-1
-star = phot.Star(T=5778, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
-planet = phot.Planet(R_p=6.371e6, Ag=0.3)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
-detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, 
-                    fwc=80000, conversion_gain=1.0, t=30*3600, D=6, throughput=0.05, f_pa=0.87,
-                    wavelength=573.8e-9, bandwidth=56.5e-9) 
-# detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-#                    fwc=80000, conversion_gain=1.0, t=108e3, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-#                    wavelength=500e-9, bandwidth=8e-9)
+system = phot.System(n_exozodi=0.2/3600, n_leakage=20/3600, n_zodi=2/3600) # exozodi = 4/hr at 1AU sep -- background count contributions in units of s^-1
+star = phot.Star(T=5800, R_star=695700e3, d_system=5, mu=mu_sun) # system distance in parsecs -- values for the Sun
+planet = phot.Planet(R_p=69911e3, Ag=0.5)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
+# detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, 
+#                     fwc=80000, conversion_gain=1.0, t=30*3600, D=6, throughput=0.05, f_pa=0.87,
+#                     wavelength=573.8e-9, bandwidth=56.5e-9) 
+detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
+                   fwc=80000, conversion_gain=1.0, t=30*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                   wavelength=500e-9, bandwidth=8e-9)
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
