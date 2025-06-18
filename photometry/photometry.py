@@ -217,7 +217,7 @@ class Planet:
         self.R_p = R_p * u.m
         self.Ag = Ag
         self.type = None # unassigned planet type
-        self.phases = [] # list to append phase angles of detections to
+        self.phase_angles = [] # list to append phase angles of detections to
 
     def choose_random_Rp(self, R_min, R_max, n_planets):
         '''
@@ -320,7 +320,7 @@ class Planet:
                 self.wavelength = wavelength * lambda_units
                 self.Ag = spectrum
             
-            return wavelength, spectrum
+            return wavelength * lambda_units, spectrum
 
         except (IndexError, ValueError, SyntaxError) as e:
             raise ValueError("Error processing file: ensure it is in the correct format.") from e     
@@ -351,7 +351,7 @@ class Planet:
         self.O = O
         self.M0 = M0
 
-def get_alb_spectra(System, spectrum_dir): # TODO: move to System class structure?
+def get_alb_spectra(Planet, spectrum_dir): # TODO: move to System class structure?
         '''
         Get albedo spectrum based on the assigned planet type and its
         orbital separation. Albedo spectrum files must contain a 
@@ -365,55 +365,54 @@ def get_alb_spectra(System, spectrum_dir): # TODO: move to System class structur
         spectrum_dir : string
             Path to directory containing folders with planet spectra
         '''
-        n_planets = len(System.planets) # Get number of planets in system
+        # n_planets = len(System.planets) # Get number of planets in system
 
-        # For each planet, pull the spectrum and add it to the planet object
-        for i in range(n_planets):
-            # Get planet object from system object
-            planet = System.planets[i]
-            a = planet.a 
-            phase_angles = planet.phase_angles
-            print('phase_angles: ', phase_angles) # TODO: check whether to add np.abs() to previous line
+        # # For each planet, pull the spectrum and add it to the planet object
+        # for i in range(n_planets):
+        #     # Get planet object from system object
+        #     planet = System.planets[i]
+        a = Planet.a 
+        phase_angles = np.abs(Planet.phase_angles)
 
-            # Go to the directory of the matching planet type
-            filepath = os.path.join(spectrum_dir + f"{planet.type}/")
-            files = [f for f in os.listdir(filepath) if os.path.isfile(os.path.join(filepath, f))] # get files in folder
+        # Go to the directory of the matching planet type
+        filepath = os.path.join(spectrum_dir + f"{Planet.type}/")
+        files = [f for f in os.listdir(filepath) if os.path.isfile(os.path.join(filepath, f))] # get files in folder
 
-            # If more than one file, find the one with the nearest semimajor axis and phase angle by
-            # searching the file names which should contain "XAU" and "Ydeg"
-            a_pattern = re.compile(r"_([\d.]+)AU_")
-            phase_pattern = re.compile(r"_([0-9]+)deg")
-            usable_file_info = []
-            for f in files:
-                a_match = a_pattern.search(f)
-                phase_match = phase_pattern.search(f)
-                if a_match and phase_match:
-                    a_val = float(a_match.group(1))
-                    phase_val = float(phase_match.group(1))
-                    usable_file_info.append((f, a_val, phase_val))
-            # For each phase angle, find best matching file
-            spectrum_filenames = []
-            for angle in phase_angles:
-                try:
-                    best_file = min(usable_file_info, key=lambda x: (abs(x[1] - a), abs(x[2] - angle)))[0]
-                    spectrum_filenames.append(best_file)
-                except ValueError:
-                    print("No matching files...")
-                    spectrum_filenames.append(None)
-            
-            # Save list of selected files and read in each spectrum
-            planet.spectrum_file = spectrum_filenames
-            # Reset planet albedo and wavelength to save multiple spectra to
-            planet.Ag = []
-            planet.wavelength = []
-            for f in spectrum_filenames:
-                if f is not None:
-                    wavelength, spectrum = planet.read_albedo_spectrum(os.path.join(filepath, f), lambda_units=u.um, 
-                                                                       save_to_object=False)
-                    planet.Ag.append(spectrum)
-                    planet.wavelength.append(wavelength)
-                else:
-                    print(f"No matching albedo spectrum to use. Add corresponding albedo spectrum to {filepath}")
+        # If more than one file, find the one with the nearest semimajor axis and phase angle by
+        # searching the file names which should contain "XAU" and "Ydeg"
+        a_pattern = re.compile(r"_([\d.]+)AU_")
+        phase_pattern = re.compile(r"_([0-9]+)deg")
+        usable_file_info = []
+        for f in files:
+            a_match = a_pattern.search(f)
+            phase_match = phase_pattern.search(f)
+            if a_match and phase_match:
+                a_val = float(a_match.group(1))
+                phase_val = float(phase_match.group(1))
+                usable_file_info.append((f, a_val, phase_val))
+        # For each phase angle, find best matching file
+        spectrum_filenames = []
+        for angle in phase_angles:
+            try:
+                best_file = min(usable_file_info, key=lambda x: (abs(x[1] - a), abs(x[2] - angle)))[0]
+                spectrum_filenames.append(best_file)
+            except ValueError:
+                print("No matching files...")
+                spectrum_filenames.append(None)
+        
+        # Save list of selected files and read in each spectrum
+        Planet.spectrum_file = spectrum_filenames
+        # Reset planet albedo and wavelength to save multiple spectra to
+        Planet.Ag = []
+        Planet.wavelength = []
+        for f in spectrum_filenames:
+            if f is not None:
+                wavelength, spectrum = Planet.read_albedo_spectrum(os.path.join(filepath, f), lambda_units=u.um, 
+                                                                    save_to_object=False)
+                Planet.Ag.append(spectrum)
+                Planet.wavelength.append(wavelength)
+            else:
+                print(f"No matching albedo spectrum to use. Add corresponding albedo spectrum to {filepath}")
 
 class Filters:
     def __init__(self, filter_file):
@@ -858,7 +857,6 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         if xs[0][detection] < 0:
             phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
         phases.append(np.degrees(phase_angle))
-        Planet.phases.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
 
         # --------- Lambert phase function ---------
         lambert_phase = (np.sin(np.absolute(phase_angle)) + \
@@ -884,7 +882,8 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
 
     return phases, phase_function, fpfs, planet_counts 
 
-def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name):
+def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name, 
+                                 use_lambert_phase=False, spectrum_dir="spectra/"):
     '''
     Function to calculate planetary phase angle and planet counts given x,y,z coordinates on-sky. 
     Calculates the planet-star flux ratio and converts planet flux density
@@ -907,7 +906,12 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     zs : numpy.ndarray
         z-values for planet location from deconfuser.sample_planets.
             Example: array([z_planet_1, z_planet_2, ..., z_planet_N])
-    filter_
+    filter_name : # TODO: update documentation
+        Name of filter being used for observation
+    use_lambert_phase : boolean
+        Boolean indicating whether or not to apply lambert phase function to planet flux
+        If True, applies Lambertian phase function in flux calculation.
+        If False, assumes you are reading in albedo spectrum as function of phase angle.
 
     Returns
     -------
@@ -932,7 +936,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     try:
         Star.blackbody_spec(Planet.wavelength)         # B_star
     except:
-        print("AttributeError: 'Planet' object has no attribute 'wavelength'.\nUsing Detector.wavelength")
+        print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength")
         Star.blackbody_spec(wavelength=Detector.wavelength)
 
     # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
@@ -956,18 +960,28 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         if xs[0][detection] < 0:
             phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
         phases.append(np.degrees(phase_angle))
+        Planet.phase_angles.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
 
         # --------- Lambert phase function ---------
         lambert_phase = (np.sin(np.absolute(phase_angle)) + \
                             (np.pi - np.absolute(phase_angle)) * np.cos(np.absolute(phase_angle))) / np.pi
         phase_function.append(lambert_phase)
-        
-        # --------- Planet flux density ---------
-        F_planet = np.pi * Planet.Ag * lambert_phase * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
-        Fp.append(F_planet.value)
 
-        # --------- Flux ratio ---------
-        flux_ratio = Planet.Ag * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
+    # ------ Read in albedo spectra for detections/phases
+    get_alb_spectra(Planet, spectrum_dir=spectrum_dir)
+    
+    for detection in range(0, len(xs[0])):
+        # --------- Planet flux density & flux ratio ---------
+        if use_lambert_phase:
+            F_planet = np.pi * Planet.Ag * phase_function[detection] * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
+            flux_ratio = Planet.Ag * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
+            Planet.phase_method = "Lambertian"
+        else: # assumed Ag is an albedo spectrum that already is a function of phase angle
+            F_planet = np.pi * Planet.Ag[detection] * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
+            flux_ratio = Planet.Ag[detection] * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
+            Planet.phase_method = "Albedo spectrum"
+
+        Fp.append(F_planet.value)
         fpfs.append(flux_ratio.value)
 
         # ----- Get filter info ---------
@@ -977,7 +991,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
 
             # ----- Get planet flux in only filter region of interest ---------
             # Planet wavelength must be in units of um
-            Fp_filt, planet_lambda_filt = spectrum_in_filter(Planet.wavelength.value, F_planet, filter_lambda_min, filter_lambda_max)
+            Fp_filt, planet_lambda_filt = spectrum_in_filter(Planet.wavelength[detection].value, F_planet, filter_lambda_min, filter_lambda_max)
             Fp_filts.append(Fp_filt)
 
             # Regrid filter points to planet wavelength grid
@@ -1206,7 +1220,7 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
     return noisy_counts_sys, photon_rates_sys, SNR_sys, phases_sys
 
 def get_detections_counts_color(n_detections, xyzs, Star, System, Detector, 
-                                filter_name=None): 
+                                filter_name=None, spectrum_dir="spectra/"): 
     '''
     Generates noisy planet detections.
     Accepts detection coordinates, calculates phase/brightness, adds detector noise.
@@ -1234,7 +1248,11 @@ def get_detections_counts_color(n_detections, xyzs, Star, System, Detector,
         phases, phase_func, fpfs, Fp_band_all, photon_counts = get_count_rate_from_spectrum(System.planets[planet], 
                                                                                             Star, Detector, xs=xs, 
                                                                                             ys=ys, zs=zs, 
-                                                                                            filter_name=filter_name)
+                                                                                            filter_name=filter_name,
+                                                                                            use_lambert_phase=False,
+                                                                                            spectrum_dir=spectrum_dir)
+        print('photon_counts: ', photon_counts) # TODO: remove
+
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_counts)
         phases_sys.append(phases)
