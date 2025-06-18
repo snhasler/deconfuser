@@ -56,7 +56,7 @@ args = parser.parse_args()
 # Set up base system parameters
 star = phot.Star(T=5800, R_star=695700e3, d_system=5, mu=mu_sun) # system distance in parsecs -- values for the Sun
 detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-                   fwc=100000, conversion_gain=1.0, t=30*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                   fwc=1e10, conversion_gain=1.0, t=24*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
                    wavelength=0.575e-6, bandwidth=0.08e-6)
 
 # ------------ Filter information ------------
@@ -106,9 +106,6 @@ for filter_name in filter_names:
     writer.writerow([run_parameters]) # save run parameters in file
     writer.writerow(headers)          # add headers to file
 
-# ------- Get filter info for first set of observations -------
-Bfilter_data, Blambda_min, Blambda_max = detector.get_filter_info('B')
-
 # ------------ Simulate planets and observations ------------ 
 # Observation epochs (years) 
 ts = args.cadence*np.arange(args.n_epochs)
@@ -143,9 +140,6 @@ for _ in range(args.n_systems):
         planet.add_orb_params(a[_], e[_], i[_], o[_], O[_], M0[_]) # add orb parameters to planet
         planet.random_planet_params() # assign random planet type, radius, Ag (scalar)
         system.add_planet(planet)     # add planet to system object
-
-    # Get albedo spectra for each planet in system
-    phot.get_alb_spectra(system, spectrum_dir=args.spectrum_dir)
 
     # print('system.planets: ', system.planets)
     # print('system.planets[0].type: ', system.planets[0].type)
@@ -190,15 +184,18 @@ for _ in range(args.n_systems):
     all_coords = np.asarray(all_coords)
 
     # TODO: get noisy and not noisy detections for simulated system in each filter
-    # TODO: STOPPED HERE
+    # ------- Get filter info for first set of observations -------
+    Bfilter_data, Blambda_min, Blambda_max = detector.get_filter_info('B')
+    print(f"First filter: B [{Blambda_min} - {Blambda_max} um]")
 
-    # get noisy and not noisy photometric detections for simulated system
-
+    # ---- get noisy and not noisy photometric detections for simulated system ----
     noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts_color(args.n_epochs, xyzs=all_coords, 
                                                                                                Star=star, System=system, 
                                                                                                Detector=detector, 
-                                                                                               filter_name=filter_names[0])
+                                                                                               filter_name=filter_names[0],
+                                                                                               spectrum_dir=args.spectrum_dir)
     print('noisy_detections: ', noisy_detections)
+    print("detections_photon_rates: ", detections_photon_rates)
     print('SNRs: ', SNRs)
     print('phases: ', phases)
 
@@ -243,11 +240,12 @@ for _ in range(args.n_systems):
     
     # TODO: update to write to all filter files
     # output simulated planet info to text file
+    print('writers: ', writers)
     for ip in range(args.n_planets):
         planet_params = [_, args.n_planets, ip+1, np.NaN, a[ip], e[ip], i[ip], o[ip], O[ip], M0[ip], ts, list(map(list, \
                         observations[ip*len(ts):(ip+1)*len(ts)])), correct_partition, None, None, None, None, None, noisy_detections[ip], \
                         detections_photon_rates[ip], SNRs[ip]] # system #, # planets simulated, planet #, a, e, i, o, O, M0, confused?, ts, xyzs, correct_partition, top_partitions, group, 'L_detections', 'L_group_options', 'L_partition_options', 'noisy_detections', 'detection_photon_rates' 
-        writer.writerow(planet_params)
+        writers['B'].writerow(planet_params)
 
     # all detection times for all obesrvations
     all_ts = np.tile(ts, args.n_planets)
@@ -306,6 +304,7 @@ for _ in range(args.n_systems):
                         # Phase information section
                         # Phase info is buried in likelihood function -- add as a return parameter in likelihood.py if you want to back it out
                         # Calculate likelihood of orbit option
+                        # TODO: here is where to run L multiple times for multiple filters of noisy_detections
                         L_orbit, L_detections = L.get_L_orbit(n_detections=args.n_epochs,
                                                             a=parameters[0], e=parameters[1],
                                                             i=parameters[2],
@@ -333,7 +332,7 @@ for _ in range(args.n_systems):
                     option_parameters = [_, args.n_planets, i+1, k, a_s, e_s, i_s, o_s, O_s, M0_s, ts, None, correct_partition, top_partitions, partition, \
                                         group, L_group_options, L_partition_options, L_detections, None, None] # parameters for writing to text file
                     
-                    writer.writerow(option_parameters)
+                    writers['B'].writerow(option_parameters)
                     i += 1 # advance to next detected planet in the system for comparison
 
             # ------------------------------------------------------------------
@@ -353,7 +352,7 @@ for _ in range(args.n_systems):
         all_sigma.append(sigma_AU)
     # ^ --------------
 
-# Re-rank systems with photometry
+# Re-rank systems with photometry in each filter
 try: # create ranking files directory if it doesn't exist
     os.makedirs("output_files/ranking_files", exist_ok=True) 
 except OSError as error: 
