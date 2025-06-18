@@ -217,6 +217,7 @@ class Planet:
         self.R_p = R_p * u.m
         self.Ag = Ag
         self.type = None # unassigned planet type
+        self.phases = [] # list to append phase angles of detections to
 
     def choose_random_Rp(self, R_min, R_max, n_planets):
         '''
@@ -292,7 +293,7 @@ class Planet:
 
         return Ag
     
-    def read_albedo_spectrum(self, spectrum_file, lambda_units=u.um):
+    def read_albedo_spectrum(self, spectrum_file, lambda_units=u.um, save_to_object=False):
         '''
         Function to read in planet spectrum from a file.
         Spectrum should be in some text file with first column
@@ -315,8 +316,10 @@ class Planet:
         try:
             wavelength, spectrum = np.loadtxt(spectrum_file, unpack=True)
 
-            self.wavelength = wavelength * lambda_units
-            self.Ag = spectrum
+            if save_to_object:
+                self.wavelength = wavelength * lambda_units
+                self.Ag = spectrum
+            
             return wavelength, spectrum
 
         except (IndexError, ValueError, SyntaxError) as e:
@@ -369,33 +372,48 @@ def get_alb_spectra(System, spectrum_dir): # TODO: move to System class structur
             # Get planet object from system object
             planet = System.planets[i]
             a = planet.a 
+            phase_angles = planet.phase_angles
+            print('phase_angles: ', phase_angles) # TODO: check whether to add np.abs() to previous line
 
             # Go to the directory of the matching planet type
             filepath = os.path.join(spectrum_dir + f"{planet.type}/")
             files = [f for f in os.listdir(filepath) if os.path.isfile(os.path.join(filepath, f))] # get files in folder
-            n_files = len(files) # get number of files in folder
 
-            # If more than one file, find the one with the nearest semimajor axis by
-            # searching the file names which should contain "XAU"
-            file_pattern = re.compile(r"_([\d.]+)AU_")
-            if n_files > 1: 
-                file_au_pairs = []
-                for f in files:
-                    match = file_pattern.search(f) 
-                    if match:
-                        dist = float(match.group(1))
-                        file_au_pairs.append((f, dist))
-
-                # Find file with closest separation value
-                spectrum_file = min(file_au_pairs, key=lambda x: abs(x[1] - a))[0]
-                
-            else:
-                spectrum_file = files[0]
-            planet.spectrum_file = spectrum_file # Save which file was used 
-                
-            # Read albedo spectrum and wavelength into planet object
-            planet.read_albedo_spectrum(os.path.join(filepath, spectrum_file), lambda_units=u.um)
-
+            # If more than one file, find the one with the nearest semimajor axis and phase angle by
+            # searching the file names which should contain "XAU" and "Ydeg"
+            a_pattern = re.compile(r"_([\d.]+)AU_")
+            phase_pattern = re.compile(r"_([0-9]+)deg")
+            usable_file_info = []
+            for f in files:
+                a_match = a_pattern.search(f)
+                phase_match = phase_pattern.search(f)
+                if a_match and phase_match:
+                    a_val = float(a_match.group(1))
+                    phase_val = float(phase_match.group(1))
+                    usable_file_info.append((f, a_val, phase_val))
+            # For each phase angle, find best matching file
+            spectrum_filenames = []
+            for angle in phase_angles:
+                try:
+                    best_file = min(usable_file_info, key=lambda x: (abs(x[1] - a), abs(x[2] - angle)))[0]
+                    spectrum_filenames.append(best_file)
+                except ValueError:
+                    print("No matching files...")
+                    spectrum_filenames.append(None)
+            
+            # Save list of selected files and read in each spectrum
+            planet.spectrum_file = spectrum_filenames
+            # Reset planet albedo and wavelength to save multiple spectra to
+            planet.Ag = []
+            planet.wavelength = []
+            for f in spectrum_filenames:
+                if f is not None:
+                    wavelength, spectrum = planet.read_albedo_spectrum(os.path.join(filepath, f), lambda_units=u.um, 
+                                                                       save_to_object=False)
+                    planet.Ag.append(spectrum)
+                    planet.wavelength.append(wavelength)
+                else:
+                    print(f"No matching albedo spectrum to use. Add corresponding albedo spectrum to {filepath}")
 
 class Filters:
     def __init__(self, filter_file):
@@ -840,6 +858,7 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
         if xs[0][detection] < 0:
             phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
         phases.append(np.degrees(phase_angle))
+        Planet.phases.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
 
         # --------- Lambert phase function ---------
         lambert_phase = (np.sin(np.absolute(phase_angle)) + \
