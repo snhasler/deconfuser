@@ -216,8 +216,10 @@ class Planet:
         '''
         self.R_p = R_p * u.m
         self.Ag = Ag
-        self.type = None # unassigned planet type
-        self.phase_angles = [] # list to append phase angles of detections to
+
+        self.type = None            # unassigned planet type
+        self.phase_angles = []      # list to append phase angles of detections to
+        self.band_fluxes = []       # empty list to append filter dict info to
 
     def choose_random_Rp(self, R_min, R_max, n_planets):
         '''
@@ -255,7 +257,9 @@ class Planet:
         n_planets : int
             Number of planets in the system that need planet types assigned.
 
+        TODO: update this function to choose planet type based on orbital separation
         '''
+        
         R_Earth = 6378e3 * u.m # Earth radius in m
 
         # Choose a random planet type to assign
@@ -350,6 +354,13 @@ class Planet:
         self.o = o
         self.O = O
         self.M0 = M0
+
+    def reset_spectra_arrays(self):
+        '''
+        Resets the arrays in Planet object which hold the spectra and wavelength arrays.
+        '''
+        self.wavelength = []
+        self.Ag = []
 
 def get_alb_spectra(Planet, spectrum_dir): # TODO: move to System class structure?
         '''
@@ -623,7 +634,7 @@ class Detector:
         self.wavelength = wavelength * u.m
         self.bandwidth = bandwidth * u.m
 
-        self.filters = [] # empty dict for appending filter info to
+        self.filters = [] # empty list for appending filter info to
 
         self.calc_FWHM(self.wavelength, self.D)
 
@@ -883,7 +894,8 @@ def get_planet_count_rate(Planet, Star, Detector, xs, ys, zs):
     return phases, phase_function, fpfs, planet_counts 
 
 def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name, 
-                                 use_lambert_phase=False, spectrum_dir="spectra/"):
+                                 use_lambert_phase=False, spectrum_dir="spectra/",
+                                 get_new_albedo_spec=False):
     '''
     Function to calculate planetary phase angle and planet counts given x,y,z coordinates on-sky. 
     Calculates the planet-star flux ratio and converts planet flux density
@@ -906,12 +918,20 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     zs : numpy.ndarray
         z-values for planet location from deconfuser.sample_planets.
             Example: array([z_planet_1, z_planet_2, ..., z_planet_N])
-    filter_name : # TODO: update documentation
+    filter_name : string
         Name of filter being used for observation
     use_lambert_phase : boolean
         Boolean indicating whether or not to apply lambert phase function to planet flux
         If True, applies Lambertian phase function in flux calculation.
         If False, assumes you are reading in albedo spectrum as function of phase angle.
+    spectrum_dir : string
+        Location of spectra -- should contain directories labeled as:
+        "rocky", "ice_giant", "gas_giant"
+    get_new_albedo_spec : boolean
+        Whether or not to get new albedo spectra for the planets. 
+        Spectra will already be saved if the planets have been run through one filter.
+        Saving additional spectra will continue to append to the list. 
+        Only set to True if running through first filter, False otherwise
 
     Returns
     -------
@@ -932,12 +952,13 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     observer_distance_AU = Star.d_system.to(u.AU)  # units: AU
     d_system = Star.d_system.to(u.m)               # distance to system in meters
 
-    # --------- calculate stellar contribution -------
-    try:
-        Star.blackbody_spec(Planet.wavelength)         # B_star
-    except:
-        print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength")
-        Star.blackbody_spec(wavelength=Detector.wavelength)
+    # # --------- calculate stellar contribution -------
+    # try:
+    #     Star.blackbody_spec(Planet.wavelength)         # B_star
+    # except:
+    #     print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength")
+    #     print('Detector.wavelength: ', Detector.wavelength)
+    #     Star.blackbody_spec(wavelength=Detector.wavelength)
 
     # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
     for i in range(0,len(xs[0])):
@@ -960,7 +981,8 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         if xs[0][detection] < 0:
             phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
         phases.append(np.degrees(phase_angle))
-        Planet.phase_angles.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
+        if get_new_albedo_spec: # only save phases in first round of observations
+            Planet.phase_angles.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
 
         # --------- Lambert phase function ---------
         lambert_phase = (np.sin(np.absolute(phase_angle)) + \
@@ -968,8 +990,17 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         phase_function.append(lambert_phase)
 
     # ------ Read in albedo spectra for detections/phases
-    get_alb_spectra(Planet, spectrum_dir=spectrum_dir)
-    
+    # Only need to get albedo spectra on first filter pass 
+    if get_new_albedo_spec:
+        get_alb_spectra(Planet, spectrum_dir=spectrum_dir)
+
+    # ---- Calculate stellar contribution -----
+    try: 
+        Star.blackbody_spec(Planet.wavelength[0])
+    except:
+        print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength scalar")
+        Star.blackbody_spec(wavelength=Detector.wavelength)
+
     for detection in range(0, len(xs[0])):
         # --------- Planet flux density & flux ratio ---------
         if use_lambert_phase:
@@ -1012,7 +1043,15 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         c_p = np.pi * Detector.qe * Detector.f_pa * Detector.throughput * (Detector.wavelength / (const.h * const.c)) * Fp_band * Detector.bandwidth * (Detector.D / 2)**2
         planet_counts.append(c_p.value) # units: [1 / s]
 
-    return phases, phase_function, fpfs, Fp_band_all, planet_counts 
+        # Save info to planet object
+        if filter_name != None:
+            # if get_new_albedo_spec:
+            #     planet_flux_dict = {'filter': filter_name, 'Fp_specs_in_filter': Fp_filts, 'Fp_band_avgs': Fp_band_all}
+            if not any(d["filter"] == filter_name for d in Planet.band_fluxes): 
+                planet_flux_dict = {'filter': filter_name, 'Fp_specs_in_filter': Fp_filts, 'Fp_band_avgs': Fp_band_all}
+                Planet.band_fluxes.append(planet_flux_dict) # save to planet object
+
+    return phases, phase_function, fpfs, Fp_band_all, planet_counts
 
 def separate_xyzs(xyzs_array):
     '''
@@ -1200,7 +1239,7 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
 
         # ----------- Calculate noisy detections ---------
         noisy_counts, SNRs = [], []
-        # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
+        # Calculate counts due to noise sources 
         bkgd_count, C_zod_exozod_lk = Detector.add_noise(System.n_zodi + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
         C_dc = Detector.dark_current * Detector.t                                # Counts due to dark current
         C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc # background counts
@@ -1220,13 +1259,35 @@ def get_detections_counts(n_planets, n_detections, xyzs, Planet, Star, System, D
     return noisy_counts_sys, photon_rates_sys, SNR_sys, phases_sys
 
 def get_detections_counts_color(n_detections, xyzs, Star, System, Detector, 
-                                filter_name=None, spectrum_dir="spectra/"): 
+                                filter_name=None, spectrum_dir="spectra/",
+                                first_filter=False): 
     '''
     Generates noisy planet detections.
     Accepts detection coordinates, calculates phase/brightness, adds detector noise.
 
     Parameters
     ----------
+    n_detections : int
+        Number of detections of the system.
+    xyzs : numpy.ndarray
+        Array of X, Y, Z coordinates for each detection. Format: 
+            [[X1_1, Y1_1, Z1_1], [X2_1, Y2_1, Z2_1], ..., [XN_M, YN_M, ZN_M]], 
+            where N is the number/time of detection and M is the number of 
+            planet in the system.
+    Star : photometry.Star
+        Star object containing information about host star (R_star, distance)
+    System : photometry.System
+        System object containing information about system and planets
+    Detector : photometry.Detector
+        Detector object containing detecting instrument parameters.
+    filter_name : string
+        Name of filter for observation
+    spectrum_dir : string
+        Path to spectra -- should contain "rocky", "ice_giant", and "gas_giant" directories
+    first_filter : boolean
+        Wheter or not this is the first filter for the observation set.
+        True if yes; False otherwise.
+        This controls when albedo spectra are pulled for the planets (see get_count_rate_from_spectrum)
 
     Returns
     -------
@@ -1250,7 +1311,8 @@ def get_detections_counts_color(n_detections, xyzs, Star, System, Detector,
                                                                                             ys=ys, zs=zs, 
                                                                                             filter_name=filter_name,
                                                                                             use_lambert_phase=False,
-                                                                                            spectrum_dir=spectrum_dir)
+                                                                                            spectrum_dir=spectrum_dir,
+                                                                                            get_new_albedo_spec=first_filter)
         print('photon_counts: ', photon_counts) # TODO: remove
 
         # ----------- append detections' photon rates to one list ---------
@@ -1259,10 +1321,10 @@ def get_detections_counts_color(n_detections, xyzs, Star, System, Detector,
         
         # ----------- Calculate noisy detections ---------
         noisy_counts, SNRs = [], []
-        # Calculate counts due to noise sources # TODO: update this section to remove hardcoded values
+        # Calculate counts due to noise sources 
         bkgd_count, C_zod_exozod_lk = Detector.add_noise(System.n_zodi + System.n_exozodi + System.n_leakage) # Count rate due to zodiacal light, exozodiacal contribution, and leakage (4 + 2+ 20) (Robinson+2016)
         C_dc = Detector.dark_current * Detector.t             # Counts due to dark current
-        C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc # TODO: should RN be squared?
+        C_b = C_zod_exozod_lk + Detector.read_noise**2 + C_dc 
 
         for count in photon_counts:
             noisy_count, C_p = Detector.add_noise(count) # noisy count per detection, planet count rate * integration time
