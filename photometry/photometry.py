@@ -243,7 +243,8 @@ class Planet:
         self.Rp = Rp * u.m
         return Rp
     
-    def random_planet_params(self, planet_types=['rocky', 'gas_giant', 'ice_giant']):
+    def random_planet_params(self, planet_types=['rocky', 'gas_giant', 'ice_giant'],
+                             assign_type_by_sep=True):
         '''
         Choose a random planet type from a list and assign it a radius value based on type.
         Based on planet type, pull the best matching albedo spectrum (based on type and separation)
@@ -252,17 +253,21 @@ class Planet:
         ---------
         planet_types : list of string
             List of planet types to choose frome
-        Rps : list of floats
-            List of radii corresponding to list of planet types in Earth radii
-        n_planets : int
-            Number of planets in the system that need planet types assigned.
-
+        assign_type_by_sep : bool
+            Whether or not to assign planet type based on its orbital separation.
+            Set to true if you want to limit rocky planets to within ~0.5-2.0 AU, giant planets between 0.5-7.0 AU,
+            and ice giants between 0.5 - 11 AU. 
+            These limits are set based on available spectra at time of writing.
+        
         TODO: update this function to choose planet type based on orbital separation
         '''
         
         R_Earth = 6378e3 * u.m # Earth radius in m
 
-        # Choose a random planet type to assign
+        # Choose a random planet type to assign 
+        if assign_type_by_sep:
+            if self.a > 2.0 and 'rocky' in planet_types: # don't assign rocky to planets outside 2 AU
+                planet_types.remove("rocky")
         type = np.random.choice(planet_types)
         self.type = type
 
@@ -276,8 +281,6 @@ class Planet:
         elif type == 'gas_giant':
             self.R_p = 11.0 * R_Earth     # ~R_Jup
             self.Ag = 0.53
-
-        self.type = type
             
     def random_Ag(self, Ag_min, Ag_max, n_planets):
         '''
@@ -1048,7 +1051,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
             # if get_new_albedo_spec:
             #     planet_flux_dict = {'filter': filter_name, 'Fp_specs_in_filter': Fp_filts, 'Fp_band_avgs': Fp_band_all}
             if not any(d["filter"] == filter_name for d in Planet.band_fluxes): 
-                planet_flux_dict = {'filter': filter_name, 'Fp_specs_in_filter': Fp_filts, 'Fp_band_avgs': Fp_band_all}
+                planet_flux_dict = {'filter': filter_name, 'Fp_specs_in_filter': Fp_filts, 'Fp_band_avgs': Fp_band_all, 'planet_wavelength_in_filter': planet_lambda_filt}
                 Planet.band_fluxes.append(planet_flux_dict) # save to planet object
 
     return phases, phase_function, fpfs, Fp_band_all, planet_counts
@@ -1314,6 +1317,7 @@ def get_detections_counts_color(n_detections, xyzs, Star, System, Detector,
                                                                                             spectrum_dir=spectrum_dir,
                                                                                             get_new_albedo_spec=first_filter)
         print('photon_counts: ', photon_counts) # TODO: remove
+        print('fpfs: ', fpfs)
 
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_counts)
