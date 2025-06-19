@@ -48,7 +48,8 @@ def likelihood(parameter, observed_sample, Detector, nbins=20):
     return L
 
 # Compute likelihood of one orbit in a confused system option
-def get_L_orbit(n_detections, a, e, i, o, O, M0, ts, noisy_counts, Star, Planet, Detector):
+def get_L_orbit(n_detections, a, e, i, o, O, M0, ts, noisy_counts, Star, Planet, Detector,
+                use_color_mode=False, filter_name=None, spectrum_dir=None):
     '''
     Function to calculate the likelihood of a single planet's orbit in a system.
 
@@ -72,9 +73,19 @@ def get_L_orbit(n_detections, a, e, i, o, O, M0, ts, noisy_counts, Star, Planet,
         Array of detection times [years].
     noisy_counts : np.ndarray
         Noisy detections of simulated or detected system [e-]
-    Star : # TODO: finish docstring
-    Planet : 
-    Detector : 
+    Star : photometry.Star
+        Star object (contains stellar parameter)
+    Planet : photometry.Planet
+        planet object (contains planet parameters for identical planet calculations)
+    Detector : photometry.Detector
+        Detector object (contains detector parameters)
+    use_color_mode : boolean
+        False if only using single-band photometry functions
+        True if using multi-band
+    filter_name : string
+        Filter name of observation if use_color_mode is True
+    spectrum_dir : string or None
+        Path to planet spectra
 
     Returns
     -------
@@ -90,8 +101,17 @@ def get_L_orbit(n_detections, a, e, i, o, O, M0, ts, noisy_counts, Star, Planet,
     xs, ys, zs = sample_planets.get_observations(a, e, i, o, O, M0, ts, Star.mu.value)
 
     # Calculate phase and intensity information   
-    phases, phase_func, fpfs, photon_rates = phot.get_planet_count_rate(Planet, Star, Detector, 
-                                                                              xs=xs, ys=ys, zs=zs)
+    if use_color_mode:
+        if filter_name == None:
+            print("Must specify a filter name if using color functions.")
+        phases, phase_func, fpfs, Fp_band_all, photon_rates = phot.get_count_rate_from_spectrum(Planet, Star, Detector, 
+                                                                                                xs, ys, zs, filter_name,
+                                                                                                use_lambert_phase=False, 
+                                                                                                spectrum_dir=spectrum_dir)
+        # TODO: add lambert phase flag and spectrum directory to function keywords
+    else:
+        phases, phase_func, fpfs, photon_rates = phot.get_planet_count_rate(Planet, Star, Detector, 
+                                                                            xs=xs, ys=ys, zs=zs)
     
     # For all detections, calculate likelihood
     for detection in range(n_detections):
