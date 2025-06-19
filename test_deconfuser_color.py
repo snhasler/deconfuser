@@ -4,6 +4,9 @@ Script to run MC simulations with the deconfuser. Original script w/o phase/colo
 How to run in command line: 
     $ python test_deconfuser_addphase.py TOLERANCE --ARG ARG_VALUE
     example: $ python test_deconfuser_addphase.py 0.05 --n_planets 3 --min_a 0.2 -v
+TODO:
+[ ] Add planet types to output file -- store so that each row that corresponds to a planet also has a planet type name and spectrum file type
+[ ] Test likelihoods -- do they look correct?
 '''
 import numpy as np
 import argparse
@@ -56,8 +59,8 @@ args = parser.parse_args()
 # Set up base system parameters
 star = phot.Star(T=5800, R_star=695700e3, d_system=5, mu=mu_sun) # system distance in parsecs -- values for the Sun
 detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-                   fwc=1e10, conversion_gain=1.0, t=24*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-                   wavelength=0.575e-6, bandwidth=0.08e-6)
+                   fwc=1e10, conversion_gain=1.0, t=10*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                   wavelength=575e-9, bandwidth=80e-9)
 
 # ------------ Filter information ------------
 n_filters = 3 # number of filters
@@ -94,7 +97,7 @@ for filter_name in filter_names:
     writers[filter_name] = writer # save to dict for later use
     files[filter_name] = f        # ^
                 
-    headers = ['system', 'n_planets', 'planet', 'n_orbit_options', 'a', 'e', 'i', \
+    headers = ['system', 'n_planets', 'planet', 'planet_type', 'n_orbit_options', 'a', 'e', 'i', \
             'o', 'O', 'M0', 'ts', 'xyzs', 'correct_partition', 'top_partitions', \
             'partition', 'group', 'L_group_options', 'L_partition_options', \
             'L_detections', 'noisy_detections', 'detection_photon_rates', 'detection_SNRs']  
@@ -133,7 +136,6 @@ for _ in range(args.n_systems):
 
     # Choose random orbit parameters for each planet
     a,e,i,o,O,M0 = sample_planets.random_planet_elements(args.n_planets, args.min_a, args.max_a, args.max_e, args.sep_a, args.min_i, args.max_i, args.spread_i_O)
-    
     # Set up planets
     for _ in range(args.n_planets):
         planet = phot.Planet() # initialize planet object
@@ -185,191 +187,210 @@ for _ in range(args.n_systems):
 
     # TODO: get noisy and not noisy detections for simulated system in each filter
     # ------- Get filter info for first set of observations -------
-    Bfilter_data, Blambda_min, Blambda_max = detector.get_filter_info('B')
-    print(f"First filter: B [{Blambda_min} - {Blambda_max} um]")
-
-    # ---- get noisy and not noisy photometric detections for simulated system ----
-    noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts_color(args.n_epochs, xyzs=all_coords, 
-                                                                                               Star=star, System=system, 
-                                                                                               Detector=detector, 
-                                                                                               filter_name=filter_names[0],
-                                                                                               spectrum_dir=args.spectrum_dir)
-    print('noisy_detections: ', noisy_detections)
-    print("detections_photon_rates: ", detections_photon_rates)
-    print('SNRs: ', SNRs)
-    print('phases: ', phases)
-
-    if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
-        # Calculate error in x,y directions due to planet signal
-        sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.015) # TODO: remove hard-coded values
-        print('sigma_AU.flatten(): ', sigma_AU.flatten())
-        # Add uncertainty to coordinates as gaussian with standard deviation of sigma
-        observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
-        observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
-
-    #     # TODO: remove plotting
-    #     ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1, alpha=0.5, label='with photo/astro err', zorder=3)
-    #     ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1,  alpha=0.5, zorder=3)
-    #     ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1,  alpha=0.5, zorder=3) 
-
-    #     for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
-    #         circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
-    #         # zi*2 = 2-sigma uncertainty radius size
-    #         ax.add_patch(circle)
-
-    # ax.scatter(0, 0, marker='*', color='gold', s=100)
-    # ax.set_xlabel('x (AU)')
-    # ax.set_ylabel('y (AU)')
-    # ax.set_aspect('equal')
-    # plt.legend()
-    # plt.title('Detections with vs. without\njoint astro/photo error')
-    # plt.show()
-
-    if args.verbose:
-        print("\nts =", list(ts)) 
-        for ip in range(args.n_planets): # for every planet
-            print("\nplanet ", ip+1, ": ")
-            print("a,e,i,o,O,M0 = ", (a[ip],e[ip],i[ip],o[ip],O[ip],M0[ip])) # true orbital parameters for each planet
-            print("xyzs =", list(map(list, observations[ip*len(ts):(ip+1)*len(ts)]))) # true coordinates of detection for each planet
-            print("photon_rates = ", detections_photon_rates[ip]) # calculated photon rates for each planet detection (format: [detection1, detection2, ..., detectionN])
-            print("noisy_detections = ", noisy_detections[ip]) # noisy planet detections (format: [array([planet1_detection1, ..., planet1_detectionN])], ..., array([planetM_detection1, ..., planetM_detectionN])])
-            print("SNRs = ", SNRs[ip]) # SNR for each planet detection (format: [SNR1, SNR2, ..., SNRN])
-    
-    # TODO: update to write to all filter files
-    # output simulated planet info to text file
-    print('writers: ', writers)
-    for ip in range(args.n_planets):
-        planet_params = [_, args.n_planets, ip+1, np.NaN, a[ip], e[ip], i[ip], o[ip], O[ip], M0[ip], ts, list(map(list, \
-                        observations[ip*len(ts):(ip+1)*len(ts)])), correct_partition, None, None, None, None, None, noisy_detections[ip], \
-                        detections_photon_rates[ip], SNRs[ip]] # system #, # planets simulated, planet #, a, e, i, o, O, M0, confused?, ts, xyzs, correct_partition, top_partitions, group, 'L_detections', 'L_group_options', 'L_partition_options', 'noisy_detections', 'detection_photon_rates' 
-        writers['B'].writerow(planet_params)
-
-    # all detection times for all obesrvations
-    all_ts = np.tile(ts, args.n_planets)
-    
-    # -------------------- Do the orbit fitting --------------------
-    # get all possible (full or partial) groupings of detection by orbits that fit them with the coarsest tolerance
-    groupings = orbit_grouper.group_orbits(observations, all_ts)
-    print('groupings: ', groupings)
-
-    # select only groupings that include all epochs (these will be most highly ranked, so no need to check the rest)
-    groupings = [g for g in groupings if len(g) == args.n_epochs] 
-    
-    # Check for spurious orbits and repeat for finer tolerances
-    for j in range(len(tolerances)):
-        found_correct = sum(cg in groupings for cg in correct_partition)
-
-        print('-------------------------------------------------------------')
-        print("Tolerance %f: found %d correct and %d spurious orbits out of %d"%(tolerances[j], found_correct, len(groupings) - found_correct, args.n_planets))
-        if args.verbose:
-            print("Tolerance %f:"%(tolerances[j]), groupings)
-
-        # Find all partitions of observations to exactly n_planets groups
-        # Note that since all partial grouping were filtered out, all partitions will have exactly n_planets groups
-        try:
-            top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
-        except:
-            if len(groupings) == 0:
-                top_partitions = []
-                print("No groups which contain all epochs of observation.")
-
-        if found_correct < args.n_planets:
-            for ip in range(args.n_planets):
-                if not correct_partition[ip] in groupings:
-                    print("Failed to fit a correct orbit for planet %d!"%(ip))
-        elif len(top_partitions) == 1:
-            print("Tolerance %f: no confusion"%(tolerances[j]))
+    kk = 0 
+    for filter_name in filter_names:
+        if kk == 0: # Check whether or not this is the first filter for observation
+            first_filter = True # Controls whether or not to pull new albedo spectra for the planets
         else:
-            assert(len(top_partitions) > 1)
-            L_system_options = [] # for system likelihoods
-            # Get orbital parameters of spurious orbits
-            for partition in top_partitions: 
-                print('partition: ', partition)
-                L_partition_options = [] # group options list
-                i = 0                    # for getting correct noisy counts per planet orbit option
-                for group in partition:  # which data points lie on the orbit
-                    print('\ngroup: ', group)
-                    L_group_options = [] # orbit options list
-                    group_orbit_parameters = []
-                    k = 0                # keep track of how many orbit options per group
+            first_filter = False # False if you're on a second round of observations, otherwise you will have too many/incorrect spectra in the planet objects
+            
+        filter_data, lambda_min, lambda_max = detector.get_filter_info(filter_name) # assigns filter info to detector parameters (wavelength, bandwidth)
+        print(f"\n\nFilter: {filter_name} [{lambda_min} - {lambda_max} um]")
 
-                    # Get groups + orbital parameters to rank with photometry
-                    for err, parameters in orbit_fitter.fit(observations[group]): 
-                        print('\nParameters: ', parameters)
-                        print('err: ', err) # Added to return fit errors
+        # Refresh arrays holding planet spectra and wavelengths for each filter
+        # Otherwise -- the array will pull the incorrect spectra when calculating
+        for ip in range(args.n_planets):
+            system.planets[ip].wavelength = []
 
-                        # Phase information section
-                        # Phase info is buried in likelihood function -- add as a return parameter in likelihood.py if you want to back it out
-                        # Calculate likelihood of orbit option
-                        # TODO: here is where to run L multiple times for multiple filters of noisy_detections
-                        L_orbit, L_detections = L.get_L_orbit(n_detections=args.n_epochs,
-                                                            a=parameters[0], e=parameters[1],
-                                                            i=parameters[2],
-                                                            o=parameters[3],
-                                                            O=parameters[4],
-                                                            M0=parameters[5],
-                                                            ts=ts,
-                                                            noisy_counts=noisy_detections[i],
-                                                            Star=star, Planet=planet, Detector=detector)
-                        print(f'L_orbit: {L_orbit}')    # Likelihood of entire orbit (alldetections) 
-                        L_group_options.append(L_orbit) # save L of each orbit option per group
-                        print(f'L_group_options: {L_group_options}') # Likelihood of each orbit option in a group 
-                        group_orbit_parameters.append(parameters)
-                        k += 1 # track number of orbit options
+        # ---- get noisy and not noisy photometric detections for simulated system ----
+        noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts_color(args.n_epochs, xyzs=all_coords, 
+                                                                                                Star=star, System=system, 
+                                                                                                Detector=detector, 
+                                                                                                filter_name=filter_name,
+                                                                                                spectrum_dir=args.spectrum_dir,
+                                                                                                first_filter=first_filter)
+        print('noisy_detections: ', noisy_detections)
+        print("detections_photon_rates: ", detections_photon_rates)
+        print('SNRs: ', SNRs)
+        print('phases: ', phases)
 
-                    L_partition_options.append(L_group_options) # Likelihood of all orbit options in a partition -- will be empty if i = nan
+        if args.sigma_photo: # if true, add astrometric uncertainty to observations due to simulated photometry
+            # Calculate error in x,y directions due to planet signal
+            sigma_AU = phot.astro_photo_uncertainty(SNRs, detector, star, SNR_low_lim=2, sigma_lim=0.015) # TODO: remove hard-coded values
+            print('sigma_AU.flatten(): ', sigma_AU.flatten())
+            # Add uncertainty to coordinates as gaussian with standard deviation of sigma
+            observations_werr = observations
+            observations_werr[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
+            observations_werr[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
+            # TODO: update "observatoins" after this instance to equal "observations_werr" if sigma_photo=True 
+            if kk == 0: # only add astro uncertainty to all points on the first time through the loop 
+                observations = observations_werr
+        kk += 1
+        #     # TODO: remove plotting
+        #     ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
+        #                linewidth=1, alpha=0.5, label='with photo/astro err', zorder=3)
+        #     ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
+        #                linewidth=1,  alpha=0.5, zorder=3)
+        #     ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
+        #                linewidth=1,  alpha=0.5, zorder=3) 
 
-                    # Write confused orbit options to output file
-                    a_s = [orbit[0] for orbit in group_orbit_parameters] # separate orbital parameters for all orbit options in a group
-                    e_s = [orbit[1] for orbit in group_orbit_parameters]
-                    i_s = [orbit[2] for orbit in group_orbit_parameters]
-                    o_s = [orbit[3] for orbit in group_orbit_parameters]
-                    O_s = [orbit[4] for orbit in group_orbit_parameters]
-                    M0_s = [orbit[5] for orbit in group_orbit_parameters]
-                    option_parameters = [_, args.n_planets, i+1, k, a_s, e_s, i_s, o_s, O_s, M0_s, ts, None, correct_partition, top_partitions, partition, \
-                                        group, L_group_options, L_partition_options, L_detections, None, None] # parameters for writing to text file
-                    
-                    writers['B'].writerow(option_parameters)
-                    i += 1 # advance to next detected planet in the system for comparison
+        #     for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
+        #         circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
+        #         # zi*2 = 2-sigma uncertainty radius size
+        #         ax.add_patch(circle)
 
-            # ------------------------------------------------------------------
-            print("Tolerance %f: found %d spurious \"good\" paritions of detections by planets (confusion)"%(tolerances[j], len(top_partitions) - 1))
+        # ax.scatter(0, 0, marker='*', color='gold', s=100)
+        # ax.set_xlabel('x (AU)')
+        # ax.set_ylabel('y (AU)')
+        # ax.set_aspect('equal')
+        # plt.legend()
+        # plt.title('Detections with vs. without\njoint astro/photo error')
+        # plt.show()
+
+        if args.verbose:
+            print("\nts =", list(ts)) 
+            for ip in range(args.n_planets): # for every planet
+                print("\nplanet ", ip+1, f"({system.planets[ip].type}): ")
+                print("a,e,i,o,O,M0 = ", (a[ip],e[ip],i[ip],o[ip],O[ip],M0[ip])) # true orbital parameters for each planet
+                print("xyzs =", list(map(list, observations[ip*len(ts):(ip+1)*len(ts)]))) # true coordinates of detection for each planet
+                print("photon_rates = ", detections_photon_rates[ip]) # calculated photon rates for each planet detection (format: [detection1, detection2, ..., detectionN])
+                print("noisy_detections = ", noisy_detections[ip]) # noisy planet detections (format: [array([planet1_detection1, ..., planet1_detectionN])], ..., array([planetM_detection1, ..., planetM_detectionN])])
+                print("SNRs = ", SNRs[ip]) # SNR for each planet detection (format: [SNR1, SNR2, ..., SNRN])
+        
+    # output simulated planet info to text file
+        for ip in range(args.n_planets):
+            planet_params = [_, args.n_planets, ip+1, system.planets[ip].type, np.NaN, a[ip], e[ip], i[ip], o[ip], O[ip], M0[ip], ts, list(map(list, \
+                            observations[ip*len(ts):(ip+1)*len(ts)])), correct_partition, None, None, None, None, None, noisy_detections[ip], \
+                            detections_photon_rates[ip], SNRs[ip]] # system #, # planets simulated, planet #, a, e, i, o, O, M0, confused?, ts, xyzs, correct_partition, top_partitions, group, 'L_detections', 'L_group_options', 'L_partition_options', 'noisy_detections', 'detection_photon_rates' 
+            writers[filter_name].writerow(planet_params)
+
+        # all detection times for all obesrvations
+        all_ts = np.tile(ts, args.n_planets)
+        
+        # -------------------- Do the orbit fitting --------------------
+        # get all possible (full or partial) groupings of detection by orbits that fit them with the coarsest tolerance
+        groupings = orbit_grouper.group_orbits(observations, all_ts)
+        print('groupings: ', groupings)
+
+        # select only groupings that include all epochs (these will be most highly ranked, so no need to check the rest)
+        groupings = [g for g in groupings if len(g) == args.n_epochs] 
+        
+        # Check for spurious orbits and repeat for finer tolerances
+        for j in range(len(tolerances)):
+            found_correct = sum(cg in groupings for cg in correct_partition)
+
+            print('-------------------------------------------------------------')
+            print("Tolerance %f: found %d correct and %d spurious orbits out of %d"%(tolerances[j], found_correct, len(groupings) - found_correct, args.n_planets))
             if args.verbose:
-                print("Tolerance %f:"%(tolerances[j]), top_partitions)
+                print("Tolerance %f:"%(tolerances[j]), groupings)
 
-        #move to a finer tolerance
-        if j < len(tolerances) - 1:
-            #only keep groupings that cna be fitted with an orbit with the finer tolerance
-            groupings = [g for g in groupings if any(err < tolerances[j+1] for err in orbit_fitters[j].fit(observations[list(g)], only_error=True))]
+            # Find all partitions of observations to exactly n_planets groups
+            # Note that since all partial grouping were filtered out, all partitions will have exactly n_planets groups
+            try:
+                top_partitions = list(partition_ranking.get_ranked_partitions(groupings))
+            except:
+                if len(groupings) == 0:
+                    top_partitions = []
+                    print("No groups which contain all epochs of observation.")
 
-    # TODO: remove -----
-    all_phases.append(phases)
-    all_SNRs.append(SNRs)
-    if args.sigma_photo:
-        all_sigma.append(sigma_AU)
-    # ^ --------------
+            if found_correct < args.n_planets:
+                for ip in range(args.n_planets):
+                    if not correct_partition[ip] in groupings:
+                        print("Failed to fit a correct orbit for planet %d!"%(ip))
+            elif len(top_partitions) == 1:
+                print("Tolerance %f: no confusion"%(tolerances[j]))
+            else:
+                assert(len(top_partitions) > 1)
+                L_system_options = [] # for system likelihoods
+                # Get orbital parameters of spurious orbits
+                for partition in top_partitions: 
+                    print('partition: ', partition)
+                    L_partition_options = [] # group options list
+                    ii = 0                    # for getting correct noisy counts per planet orbit option
+                    for group in partition:  # which data points lie on the orbit
+                        print('\ngroup: ', group)
+                        L_group_options = [] # orbit options list
+                        group_orbit_parameters = []
+                        k = 0                # keep track of how many orbit options per group
 
-# Re-rank systems with photometry in each filter
-try: # create ranking files directory if it doesn't exist
-    os.makedirs("output_files/ranking_files", exist_ok=True) 
-except OSError as error: 
-    print("ranking_files directory cannot be created.")
+                        # Get groups + orbital parameters to rank with photometry
+                        for err, parameters in orbit_fitter.fit(observations[group]): 
+                            print('\nParameters: ', parameters)
+                            print('err: ', err) # Added to return fit errors
 
-# Create photometry ranking object -- houses file dataframe
-try:
-    confused_systems = ranking.PhotometryRanking(filepath=f"output_files/{args.output_file}", n_planets=args.n_planets)
-    df_confused = confused_systems.get_top_group_options()  # iterate over options with multiple groups
-    df_ranked = confused_systems.top_ranked_partition()     # Get top ranked partition in each system
-    df_recombined = confused_systems.combine_and_cleanup(save_file=True, save_path=args.ranking_path + f"systems_ranked_{now}.txt")  # Combine original and ranked dataframes
-    # If you want to calculate percent difference between simulated and fit orbits:
-    df_final = confused_systems.orbit_percent_diff()      
-    df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=args.ranking_path + f"systems_ranked_wPercDiff_{now}.txt")    
-    print('\nPhotometry ranking complete.')
-except:
-    print("No ranking file") # TODO: update to handle more from ^
+                            # Phase information section
+                            # Phase info is buried in likelihood function -- add as a return parameter in likelihood.py if you want to back it out
+                            # Calculate likelihood of orbit option
+                            # TODO: here is where to run L multiple times for multiple filters of noisy_detections
+                            L_orbit, L_detections = L.get_L_orbit(n_detections=args.n_epochs,
+                                                                a=parameters[0], e=parameters[1],
+                                                                i=parameters[2],
+                                                                o=parameters[3],
+                                                                O=parameters[4],
+                                                                M0=parameters[5],
+                                                                ts=ts,
+                                                                noisy_counts=noisy_detections[ii],
+                                                                Star=star, Planet=system.planets[ii], Detector=detector, 
+                                                                use_color_mode=True, filter_name=filter_name,
+                                                                spectrum_dir=args.spectrum_dir)
+                            print(f'L_orbit: {L_orbit}')    # Likelihood of entire orbit (alldetections) 
+                            L_group_options.append(L_orbit) # save L of each orbit option per group
+                            print(f'L_group_options: {L_group_options}') # Likelihood of each orbit option in a group 
+                            group_orbit_parameters.append(parameters)
+                            k += 1 # track number of orbit options
+
+                        L_partition_options.append(L_group_options) # Likelihood of all orbit options in a partition -- will be empty if i = nan
+
+                        # Write confused orbit options to output file
+                        a_s = [orbit[0] for orbit in group_orbit_parameters] # separate orbital parameters for all orbit options in a group
+                        e_s = [orbit[1] for orbit in group_orbit_parameters]
+                        i_s = [orbit[2] for orbit in group_orbit_parameters]
+                        o_s = [orbit[3] for orbit in group_orbit_parameters]
+                        O_s = [orbit[4] for orbit in group_orbit_parameters]
+                        M0_s = [orbit[5] for orbit in group_orbit_parameters]
+                        option_parameters = [_, args.n_planets, i+1, system.planets[ii].type, k, a_s, e_s, i_s, o_s, O_s, M0_s, ts, None, correct_partition, top_partitions, partition, \
+                                            group, L_group_options, L_partition_options, L_detections, None, None] # parameters for writing to text file
+                        
+                        writers[filter_name].writerow(option_parameters)
+                        ii += 1 # advance to next detected planet in the system for comparison
+
+                # ------------------------------------------------------------------
+                print("Tolerance %f: found %d spurious \"good\" paritions of detections by planets (confusion)"%(tolerances[j], len(top_partitions) - 1))
+                if args.verbose:
+                    print("Tolerance %f:"%(tolerances[j]), top_partitions)
+
+            # move to a finer tolerance
+            if j < len(tolerances) - 1:
+                #only keep groupings that cna be fitted with an orbit with the finer tolerance
+                groupings = [g for g in groupings if any(err < tolerances[j+1] for err in orbit_fitters[j].fit(observations[list(g)], only_error=True))]
+
+        # TODO: remove -----
+        all_phases.append(phases)
+        all_SNRs.append(SNRs)
+        if args.sigma_photo:
+            all_sigma.append(sigma_AU)
+        # ^ --------------
+
+    # Re-rank systems with photometry in each filter
+    try: # create ranking files directory if it doesn't exist
+        os.makedirs("output_files/ranking_files", exist_ok=True) 
+    except OSError as error: 
+        print("ranking_files directory cannot be created.")
+
+    # Create photometry ranking object -- houses file dataframe
+    try:
+        for filter_name in filter_names:
+            output_file = f"{args.output_file}_{filter_name}.txt"
+            confused_systems = ranking.PhotometryRanking(filepath=f"output_files/{output_file}", n_planets=args.n_planets)
+            df_confused = confused_systems.get_top_group_options()  # iterate over options with multiple groups
+            df_ranked = confused_systems.top_ranked_partition()     # Get top ranked partition in each system
+            df_recombined = confused_systems.combine_and_cleanup(save_file=True, save_path=args.ranking_path + f"systems_ranked_{now}_{filter_name}.txt")  # Combine original and ranked dataframes
+            # If you want to calculate percent difference between simulated and fit orbits:
+            df_final = confused_systems.orbit_percent_diff()      
+            df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=args.ranking_path + f"systems_ranked_wPercDiff_{now}_{filter_name}.txt")    
+            print('\nPhotometry ranking complete.')
+    except:
+        print("No ranking files.")
 
 end  = datetime.now()
 runtime = end - start
@@ -380,7 +401,10 @@ f.close()
 logfile.close() 
 sys.stdout = sys.__stdout__ # reset standard output to terminal
 sys.stderr = sys.__stderr__ # reset error output to terminal
-print('Output written to: output_files/' + args.output_file + " & " + args.ranking_path)
+# print('Output written to: output_files/' + args.output_file + " & " + args.ranking_path)
+print('Output written to: output_files/')
+print([f for f in files])
+print(" & " + args.ranking_path)
 
 # # Plot phases/SNR after this finishes
 # SNR = [item for sublist in all_SNRs for item in sublist for item in item] # rearrange
