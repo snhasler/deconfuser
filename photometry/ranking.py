@@ -309,4 +309,95 @@ class PhotometryRanking:
 
         return df_final
     
+def check_ranking_by_planet(df_confused_final, n_planets):
+    '''
+    Cross-check percent difference in a, e, i against the systems that were
+    top ranked to answer: How many planets with top-ranked orbits were
+    also the planets with the lowest percent difference out of the partitions?
+
+    Also updates columns in df_confused_final
+
+    Parameters
+    ----------
+    df_confused_final : pandas.DataFrame
+        Final dataframe of confused options after ranking
+    n_planets : int, optional
+        Number of planets simulated per system
+
+    Returns
+    -------
+    n_top_a_is_best, n_top_e_is_best, n_top_i_is_best : ints
+        The number of systems for which the top-ranked system also had the lowest
+        percent difference compared to the simulated system for semimajor axis, 
+        eccentricity, and inclination
+
+    '''
+    systems = df_confused_final['system_original'].unique()
+    top_ranked_a_is_best, top_ranked_e_is_best, top_ranked_i_is_best = [], [], []
+    df_confused_final.loc[:,'best_a'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
+    df_confused_final.loc[:,'best_e'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
+    df_confused_final.loc[:,'best_i'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
+
+    for system in systems:
+        df_system = df_confused_final[df_confused_final['system_original'] == system] # get df of just single system
+        for planet in range(n_planets):
+            planet += 1
+            df_single_planet = df_system[df_system['planet_original'] == planet] # get df of just single planet in the system
+
+            # Get the minimum value for a, e, i_%diff cols
+            min_a = df_single_planet['a_%diff'].min() # Gets min value
+            min_e = df_single_planet['e_%diff'].min()
+            min_i = df_single_planet['i_%diff'].min()
+            # Get indices of rows with the min values
+            min_a_ids = df_single_planet.index[df_single_planet['a_%diff'] == min_a].to_list()
+            min_e_ids = df_single_planet.index[df_single_planet['e_%diff'] == min_e].to_list()
+            min_i_ids = df_single_planet.index[df_single_planet['i_%diff'] == min_i].to_list()
+            
+            # Track index of which orbit is a better fit in semimajor axis for each planet
+            df_confused_final.loc[min_a_ids, 'best_a'] = True
+            df_confused_final.loc[min_e_ids, 'best_e'] = True
+            df_confused_final.loc[min_i_ids, 'best_i'] = True 
+
+            # check if the min percent difference is also the top ranked system
+            does_topranked_have_mina = df_single_planet.loc[df_single_planet['a_%diff'] == min_a, 'top_ranked_partition'].eq(True).any()
+            does_topranked_have_mine = df_single_planet.loc[df_single_planet['e_%diff'] == min_e, 'top_ranked_partition'].eq(True).any()
+            does_topranked_have_mini = df_single_planet.loc[df_single_planet['i_%diff'] == min_i, 'top_ranked_partition'].eq(True).any()
+
+            # Keep track of the top ranked which are the best option and the total number (total should be 30)
+            if does_topranked_have_mina:
+                top_ranked_a_is_best.append(does_topranked_have_mina)
+            if does_topranked_have_mine:
+                top_ranked_e_is_best.append(does_topranked_have_mine)
+            if does_topranked_have_mini:
+                top_ranked_i_is_best.append(does_topranked_have_mini)
     
+        # C# Count the number of "True" values for every n_planets rows
+        best_a_counts = df_confused_final['best_a'].groupby(df_confused_final.index // n_planets).sum() # This sums up the True counts in the "best_a" col for every 3 rows
+        best_e_counts = df_confused_final['best_e'].groupby(df_confused_final.index // n_planets).sum()
+        best_i_counts = df_confused_final['best_i'].groupby(df_confused_final.index // n_planets).sum()
+
+        df_confused_final['best_a_count'] = df_confused_final.index.map(lambda i: best_a_counts[i // n_planets]) 
+        df_confused_final['best_e_count'] = df_confused_final.index.map(lambda i: best_e_counts[i // n_planets]) 
+        df_confused_final['best_i_count'] = df_confused_final.index.map(lambda i: best_i_counts[i // n_planets]) 
+
+    n_top_a_is_best = len(top_ranked_a_is_best)
+    n_top_e_is_best = len(top_ranked_e_is_best)
+    n_top_i_is_best = len(top_ranked_i_is_best)
+
+    return n_top_a_is_best, n_top_e_is_best, n_top_i_is_best
+
+def print_percent_best(ntop_param_best, param_str, total):
+    '''
+    Printing for results of check_ranking_by_planet()
+
+    Parameters
+    ----------
+    ntop_param_best : int
+        Number of top parameters that are the "best" ranked per system 
+        Output of check_ranking_by_planet()
+    param_str : str
+        Parameter that you're checking, either 'a', 'e', or 'i'
+    total : int
+        Total number of systems 
+    '''
+    print(f'Percent of planets for which top ranked {param_str} is best: ', ntop_param_best / total)
