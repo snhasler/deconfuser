@@ -101,11 +101,9 @@ for filter_name in filter_names:
             'o', 'O', 'M0', 'ts', 'xyzs', 'correct_partition', 'top_partitions', \
             'partition', 'group', 'L_group_options', 'L_partition_options', \
             'L_detections', 'noisy_detections', 'detection_photon_rates', 'detection_SNRs']  
-    run_parameters = f"Run parameters: {args.n_systems} systems, {args.n_planets} planets, \
-                        {args.n_epochs} epochs, {args.cadence} cadence (yr), \
-                        {args.min_a} min_a (AU), {args.max_a} max_a (AU), {args.sep_a} sep_a (AU), \
-                        {args.min_i} min_i (rad), {args.max_i} max_i (rad), {args.max_e} max_e, \
-                        {args.tolerances} tolerances"
+    run_parameters = f"Run parameters: {args.n_systems} systems, {args.n_planets} planets, {args.n_epochs} epochs, {args.cadence} cadence (yr), {args.min_a} min_a (AU), {args.max_a} max_a (AU), {args.sep_a} sep_a (AU), \
+                        {args.min_i} min_i (rad), {args.max_i} max_i (rad), {args.max_e} max_e, {args.tolerances} tolerances, {detector.qe} qe, {detector.cic} cic, {detector.dark_current} dark_current, \
+                              {detector.read_noise} read noise, {detector.gain} gain, {detector.t} time (s), {detector.D} Diam. [m], {detector.throughput} throughput, {detector.f_pa} f_pa"
     writer.writerow([run_parameters]) # save run parameters in file
     writer.writerow(headers)          # add headers to file
 
@@ -196,11 +194,6 @@ for _ in range(args.n_systems):
             
         filter_data, lambda_min, lambda_max = detector.get_filter_info(filter_name) # assigns filter info to detector parameters (wavelength, bandwidth)
         print(f"\n\nFilter: {filter_name} [{lambda_min} - {lambda_max} um]")
-
-        # Refresh arrays holding planet spectra and wavelengths for each filter
-        # Otherwise -- the array will pull the incorrect spectra when calculating
-        for ip in range(args.n_planets):
-            system.planets[ip].wavelength = []
 
         # ---- get noisy and not noisy photometric detections for simulated system ----
         noisy_detections, detections_photon_rates, SNRs, phases = phot.get_detections_counts_color(args.n_epochs, xyzs=all_coords, 
@@ -322,6 +315,7 @@ for _ in range(args.n_systems):
                             # Phase info is buried in likelihood function -- add as a return parameter in likelihood.py if you want to back it out
                             # Calculate likelihood of orbit option
                             # TODO: here is where to run L multiple times for multiple filters of noisy_detections
+                            print('Filter right before get_L_orbit: ', filter_name)
                             L_orbit, L_detections = L.get_L_orbit(n_detections=args.n_epochs,
                                                                 a=parameters[0], e=parameters[1],
                                                                 i=parameters[2],
@@ -333,6 +327,7 @@ for _ in range(args.n_systems):
                                                                 Star=star, Planet=system.planets[ii], Detector=detector, 
                                                                 use_color_mode=True, filter_name=filter_name,
                                                                 spectrum_dir=args.spectrum_dir)
+                            
                             print(f'L_orbit: {L_orbit}')    # Likelihood of entire orbit (alldetections) 
                             L_group_options.append(L_orbit) # save L of each orbit option per group
                             print(f'L_group_options: {L_group_options}') # Likelihood of each orbit option in a group 
@@ -348,7 +343,7 @@ for _ in range(args.n_systems):
                         o_s = [orbit[3] for orbit in group_orbit_parameters]
                         O_s = [orbit[4] for orbit in group_orbit_parameters]
                         M0_s = [orbit[5] for orbit in group_orbit_parameters]
-                        option_parameters = [_, args.n_planets, i+1, system.planets[ii].type, k, a_s, e_s, i_s, o_s, O_s, M0_s, ts, None, correct_partition, top_partitions, partition, \
+                        option_parameters = [_, args.n_planets, ii+1, system.planets[ii].type, k, a_s, e_s, i_s, o_s, O_s, M0_s, ts, None, correct_partition, top_partitions, partition, \
                                             group, L_group_options, L_partition_options, L_detections, None, None] # parameters for writing to text file
                         
                         writers[filter_name].writerow(option_parameters)
@@ -371,11 +366,11 @@ for _ in range(args.n_systems):
             all_sigma.append(sigma_AU)
         # ^ --------------
 
-    # Re-rank systems with photometry in each filter
-    try: # create ranking files directory if it doesn't exist
-        os.makedirs("output_files/ranking_files", exist_ok=True) 
-    except OSError as error: 
-        print("ranking_files directory cannot be created.")
+        # Re-rank systems with photometry in each filter
+        try: # create ranking files directory if it doesn't exist
+            os.makedirs("output_files/ranking_files", exist_ok=True) 
+        except OSError as error: 
+            print("ranking_files directory cannot be created.")
 
     # Create photometry ranking object -- houses file dataframe
     try:
@@ -388,7 +383,7 @@ for _ in range(args.n_systems):
             # If you want to calculate percent difference between simulated and fit orbits:
             df_final = confused_systems.orbit_percent_diff()      
             df_final_wperc = confused_systems.final_recombined(save_file=True, save_path=args.ranking_path + f"systems_ranked_wPercDiff_{now}_{filter_name}.txt")    
-            print('\nPhotometry ranking complete.')
+        print('\nPhotometry ranking complete.')
     except:
         print("No ranking files.")
 
