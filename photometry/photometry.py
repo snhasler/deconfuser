@@ -379,12 +379,6 @@ def get_alb_spectra(Planet, spectrum_dir): # TODO: move to System class structur
         spectrum_dir : string
             Path to directory containing folders with planet spectra
         '''
-        # n_planets = len(System.planets) # Get number of planets in system
-
-        # # For each planet, pull the spectrum and add it to the planet object
-        # for i in range(n_planets):
-        #     # Get planet object from system object
-        #     planet = System.planets[i]
         a = Planet.a 
         phase_angles = np.abs(Planet.phase_angles)
 
@@ -955,14 +949,6 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     observer_distance_AU = Star.d_system.to(u.AU)  # units: AU
     d_system = Star.d_system.to(u.m)               # distance to system in meters
 
-    # # --------- calculate stellar contribution -------
-    # try:
-    #     Star.blackbody_spec(Planet.wavelength)         # B_star
-    # except:
-    #     print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength")
-    #     print('Detector.wavelength: ', Detector.wavelength)
-    #     Star.blackbody_spec(wavelength=Detector.wavelength)
-
     # --------- Convert coordinates to orbital separation from star (star @ origin (0,0,0)) ---------
     for i in range(0,len(xs[0])):
         x_planet = xs[0][i] * u.AU                 # all coordinates from deconfuser are in units of AU
@@ -984,6 +970,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         if xs[0][detection] < 0:
             phase_angle = phase_angle - 2*phase_angle # convert to negative angle for plotting whole orbit
         phases.append(np.degrees(phase_angle))
+
         if get_new_albedo_spec: # only save phases in first round of observations
             Planet.phase_angles.append(np.degrees(phase_angle)) # also save phases of each detection to Planet object for retrieving spectra
 
@@ -993,7 +980,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
         phase_function.append(lambert_phase)
 
     # ------ Read in albedo spectra for detections/phases
-    # Only need to get albedo spectra on first filter pass 
+    # Only need to get albedo spectra on first filter pass -- this covers whole wavelength range of planet model
     if get_new_albedo_spec:
         get_alb_spectra(Planet, spectrum_dir=spectrum_dir)
 
@@ -1010,7 +997,7 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
             F_planet = np.pi * Planet.Ag * phase_function[detection] * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
             flux_ratio = Planet.Ag * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
             Planet.phase_method = "Lambertian"
-        else: # assumed Ag is an albedo spectrum that already is a function of phase angle
+        else: # assume Ag is an albedo spectrum that already is a function of phase angle
             F_planet = np.pi * Planet.Ag[detection] * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 
             flux_ratio = Planet.Ag[detection] * ((Planet.R_p / (separation[detection].to(u.m)))**2) * lambert_phase
             Planet.phase_method = "Albedo spectrum"
@@ -1316,9 +1303,7 @@ def get_detections_counts_color(n_detections, xyzs, Star, System, Detector,
                                                                                             use_lambert_phase=False,
                                                                                             spectrum_dir=spectrum_dir,
                                                                                             get_new_albedo_spec=first_filter)
-        print('photon_counts: ', photon_counts) # TODO: remove
-        print('fpfs: ', fpfs)
-
+        print('Fp_band_all: ', Fp_band_all) # TODO: remove
         # ----------- append detections' photon rates to one list ---------
         photon_rates_sys.append(photon_counts)
         phases_sys.append(phases)
