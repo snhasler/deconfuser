@@ -401,3 +401,122 @@ def print_percent_best(ntop_param_best, param_str, total):
         Total number of systems 
     '''
     print(f'Percent of planets for which top ranked {param_str} is best: ', ntop_param_best / total)
+
+def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
+    """
+    Combine three dataframes after they have been passed through check_ranking_by_planet().
+    Creates new merged dataframe with each filter column labeled separately (changes
+    column headers). 
+    Allows for viewing likelihood due to each filter at once
+
+    Parameters
+    ----------
+    df1 : pandas.DataFrame
+        Dataframe from first filter
+    df2 : pandas.DataFrame
+        Dataframe from second filter
+    df3 : pandas.DataFrame
+        Dataframe from third filter
+    filtname1 : str
+        Name of first filter
+    filtname2 : str
+        Name of second filter
+    filtname3 : str
+        Name of third filter
+
+    Returns
+    -------
+    pandas.DataFrame
+        Merged DataFrame containing all information, with each
+        filter labeled separately
+    """
+
+    # Rename columns in each filter df
+    df_filt1 = df1.rename(columns={"L_detections": f"L_detections_{filtname1}",
+                                   "L_group_options": f"L_group_options_{filtname1}",
+                                   'L_orbit': f"L_orbit_{filtname1}", 
+                                   "L_partition": f"L_partition_{filtname1}",
+                                   "L_partition_list": f"L_partition_list_{filtname1}",
+                                   "ranking": f"ranking_{filtname1}",
+                                   "top_ranked_partition": f"top_ranked_partition_{filtname1}",
+                                   "best_a": f"best_a_{filtname1}",
+                                   "best_e": f"best_e_{filtname1}",
+                                   "best_i": f"best_i_{filtname1}",
+                                   "best_a_count": f"best_a_count_{filtname1}",
+                                   "best_e_count": f"best_e_count_{filtname1}",
+                                   "best_i_count": f"best_i_count{filtname1}"})
+    
+    df_filt2 = df2.rename(columns={"L_detections": f"L_detections_{filtname2}",
+                                   "L_group_options": f"L_group_options_{filtname2}",
+                                   'L_orbit': f"L_orbit_{filtname2}", 
+                                   "L_partition": f"L_partition_{filtname2}",
+                                   "L_partition_list": f"L_partition_list_{filtname2}",
+                                   "ranking": f"ranking_{filtname2}",
+                                   "top_ranked_partition": f"top_ranked_partition_{filtname2}",
+                                   "best_a": f"best_a_{filtname2}",
+                                   "best_e": f"best_e_{filtname2}",
+                                   "best_i": f"best_i_{filtname2}",
+                                   "best_a_count": f"best_a_count_{filtname2}",
+                                   "best_e_count": f"best_e_count_{filtname2}",
+                                   "best_i_count": f"best_i_count{filtname2}"})
+    
+    df_filt3 = df3.rename(columns={"L_detections": f"L_detections_{filtname3}",
+                                   "L_group_options": f"L_group_options_{filtname3}",
+                                   'L_orbit': f"L_orbit_{filtname3}", 
+                                   "L_partition": f"L_partition_{filtname3}",
+                                   "L_partition_list": f"L_partition_list_{filtname3}",
+                                   "ranking": f"ranking_{filtname3}",
+                                   "top_ranked_partition": f"top_ranked_partition_{filtname3}",
+                                   "best_a": f"best_a_{filtname3}",
+                                   "best_e": f"best_e_{filtname3}",
+                                   "best_i": f"best_i_{filtname3}",
+                                   "best_a_count": f"best_a_count_{filtname3}",
+                                   "best_e_count": f"best_e_count_{filtname3}",
+                                   "best_i_count": f"best_i_count{filtname3}"})
+
+    # Drop duplicate columns
+    cols2drop = ['system_original', 'n_planets_original', 'planet_original', \
+                 'planet_type_original', 'n_orbit_options_original', 'a_original', \
+                 'e_original', 'i_original', 'o_original', 'O_original', 'M0_original', \
+                 'ts', 'xyzs', 'correct_partition', 'noisy_detections', \
+                 'detection_photon_rates', 'detection_SNRs_original', 'id_top_orbit_in_group_original', \
+                 'top_a_original', 'top_e_original', 'top_i_original', 'top_o_original', \
+                 'top_O_original', 'top_M0_original', 'planet_type', 'a', 'e', 'i', 'o', \
+                 'O', 'M0', 'top_partitions', 'partition', 'group', 'detection_SNRs', \
+                 'id_top_orbit_in_group', 'top_a', 'top_e', 'top_i', 'top_o', 'top_O', \
+                 'top_M0', 'a_%diff', 'e_%diff', 'i_%diff', 'o_%diff', 'O_%diff', 'M0_%diff']
+    df_filt1_reduced = df_filt1.drop(columns=cols2drop)
+    df_filt2_reduced = df_filt2[["system_original", "planet_original", "a_original", \
+                                  f"L_detections_{filtname2}", f"L_group_options_{filtname2}", \
+                                 f"L_orbit_{filtname2}", f"L_partition_{filtname2}", \
+                                    f"L_partition_list_{filtname2}", f"ranking_{filtname2}", \
+                                        f"top_ranked_partition_{filtname2}", f"best_a_{filtname2}", \
+                                            f"best_e_{filtname2}", f"best_i_{filtname2}", \
+                                                f"best_a_count_{filtname2}", \
+                                                    f"best_e_count_{filtname2}", \
+                                                        f"best_i_count{filtname2}"]]
+    
+    df_filt3_reduced = df_filt3[["system_original", "planet_original", "a_original", \
+                                 f"L_detections_{filtname3}", f"L_group_options_{filtname3}", \
+                                 f"L_orbit_{filtname3}", f"L_partition_{filtname3}", \
+                                    f"L_partition_list_{filtname3}", f"ranking_{filtname3}", \
+                                        f"top_ranked_partition_{filtname3}", f"best_a_{filtname3}", \
+                                            f"best_e_{filtname3}", f"best_i_{filtname3}", \
+                                                f"best_a_count_{filtname3}", \
+                                                    f"best_e_count_{filtname3}", \
+                                                        f"best_i_count{filtname3}"]]
+    
+    # Concatenate dfs
+    df_merged = df_filt1.merge(df_filt2_reduced, on=['system_original', 'planet_original', 'a_original'], suffixes=('', '_dup'),
+                               how='inner').merge(df_filt3_reduced, on=['system_original', 'planet_original', 'a_original'],
+                                                  suffixes=('', '_dup2'), how='inner')
+    # Drop duplicate cols
+    df_merged = df_merged.loc[:, ~df_merged.columns.duplicated()]
+
+    return df_merged
+
+def save_df(df, filename, sep=','):
+    '''
+    Save dataframe to filename (full path)
+    '''
+    df.to_csv(filename, sep=sep, index=None, header=True)
