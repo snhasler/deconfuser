@@ -108,7 +108,7 @@ def get_L_orbit(n_detections, a, e, i, o, O, M0, ts, noisy_counts, Star, Planet,
                                                                                                 xs, ys, zs, filter_name,
                                                                                                 use_lambert_phase=False, 
                                                                                                 spectrum_dir=spectrum_dir)
-        # TODO: add lambert phase flag and spectrum directory to function keywords
+
     else:
         phases, phase_func, fpfs, photon_rates = phot.get_planet_count_rate(Planet, Star, Detector, 
                                                                             xs=xs, ys=ys, zs=zs)
