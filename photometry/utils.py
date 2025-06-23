@@ -1,6 +1,6 @@
 # S. Hasler
 # Script to house helper functions for deconfusion work
-
+import os
 import numpy as np
 import astropy.units as u
 from astropy.constants import G, M_sun
@@ -278,3 +278,28 @@ def get_top_deconf_from_ranked(single_system_ranked_df, system, ts_mjd=[59215.0,
             deconf_vals[planet]['O'] = deconf_vals[planet]['O'] + 360
 
     return deconf_vals
+
+def filter_files_exist(path, base_output_filename, filter_names):
+    """
+    Check if filter files exist at the end of run_deconfuser_color_specific_systems.py
+
+    Parameters
+    ----------
+    path : str
+        Full path to output files
+    base_output_filename : str
+        Output file name without filter name appended
+    filter_names : list of strings
+        Names of filters being used for analysis.
+        This should reflect how the output files were saved.
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    """
+    files = [base_output_filename + fname + ".txt" for fname in filter_names]
+    all_exist = all(os.path.exists(path + f) for f in files)
+
+    return all_exist, files
