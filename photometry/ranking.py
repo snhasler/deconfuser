@@ -66,7 +66,7 @@ class PhotometryRanking:
     """
     A class for updating orbit rankings using photometric information
     """
-    def __init__(self, filepath, n_planets):
+    def __init__(self, filepath, n_planets, skipfooter=1):
         '''
         Constructor
 
@@ -83,7 +83,7 @@ class PhotometryRanking:
         self.n_planets = n_planets
 
         # Read file into dataframe
-        self.df = pd.read_csv(filepath, skiprows=1, skipfooter=1, engine='python')
+        self.df = pd.read_csv(filepath, skiprows=1, skipfooter=skipfooter, engine='python')
     
     def get_top_group_options(self):
         '''
@@ -171,26 +171,31 @@ class PhotometryRanking:
             ids = list(range(len(L_partitions)))
             
             # Put likelihood and partitions into tuple
-            possible_partitions = list(zip(L_partitions, partition_options))     # create tuples of (partition likelihood, partition)       
+            possible_partitions = list(zip(L_partitions, partition_options))     # create tuples of (partition likelihood, partition)  
             sorted_partitions = sorted(possible_partitions, reverse=True)        # sort tuples from highest -> lowest likelihood
             numbered_sorted_partitions = list(zip(sorted_partitions, ids))       # add ranking ids to sorted partitions
-            highest_L_partition = sorted_partitions[0][1]                        # save partition of highest likelihood
+            highest_L_partition = numbered_sorted_partitions[0][0][0]                        # save partition of highest likelihood
 
             rankings = []
             for partition in numbered_sorted_partitions:
                 part_tuple = (partition[0][1], partition[1])                     # create new tuple to keep rankings with partitions
                 rankings.append(part_tuple)
-            
-            for partition in rankings: # add ranking value to df
-                for index, row in self.df_confused_options.iterrows():
-                    if row['partition'] == partition[0] and row['system'] == num:
-                        self.df_confused_options.loc[index, 'ranking'] = partition[1] # add ranking number to df
 
-                        # Mark highest likelihood partition in dataframe as True, the rest as False
-                        if self.df_confused_options.loc[index, 'partition'] == highest_L_partition:
+            for partition in numbered_sorted_partitions:
+                for index, row in self.df_confused_options.iterrows():
+                    if float(row['L_partition']) == partition[0][0]:
+                        self.df_confused_options.loc[index, 'ranking'] = partition[1]
+
+                        # Also add the ranking to the rest of the planets in the system
+                        option_planet_ids = np.arange(index - (self.n_planets - 1), index) # get all indices before the final planet in the system
+                        self.df_confused_options.loc[option_planet_ids, 'ranking'] = partition[1] # add ranking to the rest of the planets in the system
+                        # Mark highest likelihood partition in df as True, the rest as False
+                        if float(self.df_confused_options.loc[index, 'L_partition']) == highest_L_partition:
                             self.df_confused_options.loc[index, 'top_ranked_partition'] = True
+                            self.df_confused_options.loc[option_planet_ids, 'top_ranked_partition'] = True
                         else:
                             self.df_confused_options.loc[index, 'top_ranked_partition'] = False
+                            self.df_confused_options.loc[option_planet_ids, 'top_ranked_partition'] = False
 
         return self.df_confused_options # All confused options now ranked
     
@@ -219,7 +224,7 @@ class PhotometryRanking:
 
         return df_recombined
     
-    def orbit_percent_diff(self):
+    def orbit_percent_diff(self, save_file=False, save_path=None):
         '''
         Calculate the percent difference between the simulated orbital
         parameters and the confused partitions.
@@ -280,6 +285,9 @@ class PhotometryRanking:
                 df_confused_partitions.loc[index, 'O_%diff'] = pdiff_O
                 df_confused_partitions.loc[index, 'M0_%diff'] = pdiff_M0
 
+        if save_file:
+            df_confused_partitions.to_csv(save_path, header=True, index=None)
+
         self.df_confused_final = df_confused_partitions
 
         return df_confused_partitions
@@ -332,17 +340,17 @@ def check_ranking_by_planet(df_confused_final, n_planets):
         eccentricity, and inclination
 
     '''
-    systems = df_confused_final['system_original'].unique()
+    systems = df_confused_final['system_original1'].unique()
     top_ranked_a_is_best, top_ranked_e_is_best, top_ranked_i_is_best = [], [], []
     df_confused_final.loc[:,'best_a'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
     df_confused_final.loc[:,'best_e'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
     df_confused_final.loc[:,'best_i'] = False # initialize new column to track which orbits fit the semimajor axis best out of the bunch
 
     for system in systems:
-        df_system = df_confused_final[df_confused_final['system_original'] == system] # get df of just single system
+        df_system = df_confused_final[df_confused_final['system_original1'] == system] # get df of just single system
         for planet in range(n_planets):
             planet += 1
-            df_single_planet = df_system[df_system['planet_original'] == planet] # get df of just single planet in the system
+            df_single_planet = df_system[df_system['planet_original1'] == planet] # get df of just single planet in the system
 
             # Get the minimum value for a, e, i_%diff cols
             min_a = df_single_planet['a_%diff'].min() # Gets min value
@@ -359,9 +367,9 @@ def check_ranking_by_planet(df_confused_final, n_planets):
             df_confused_final.loc[min_i_ids, 'best_i'] = True 
 
             # check if the min percent difference is also the top ranked system
-            does_topranked_have_mina = df_single_planet.loc[df_single_planet['a_%diff'] == min_a, 'top_ranked_partition'].eq(True).any()
-            does_topranked_have_mine = df_single_planet.loc[df_single_planet['e_%diff'] == min_e, 'top_ranked_partition'].eq(True).any()
-            does_topranked_have_mini = df_single_planet.loc[df_single_planet['i_%diff'] == min_i, 'top_ranked_partition'].eq(True).any()
+            does_topranked_have_mina = df_single_planet.loc[df_single_planet['a_%diff'] == min_a, 'top_ranked_partition1'].eq(True).any()
+            does_topranked_have_mine = df_single_planet.loc[df_single_planet['e_%diff'] == min_e, 'top_ranked_partition1'].eq(True).any()
+            does_topranked_have_mini = df_single_planet.loc[df_single_planet['i_%diff'] == min_i, 'top_ranked_partition1'].eq(True).any()
 
             # Keep track of the top ranked which are the best option and the total number (total should be 30)
             if does_topranked_have_mina:
@@ -430,15 +438,16 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
         Merged DataFrame containing all information, with each
         filter labeled separately
     """
-
     # Rename columns in each filter df
-    df_filt1 = df1.rename(columns={"L_detections": f"L_detections_{filtname1}",
-                                   "L_group_options": f"L_group_options_{filtname1}",
-                                   'L_orbit': f"L_orbit_{filtname1}", 
-                                   "L_partition": f"L_partition_{filtname1}",
-                                   "L_partition_list": f"L_partition_list_{filtname1}",
-                                   "ranking": f"ranking_{filtname1}",
-                                   "top_ranked_partition": f"top_ranked_partition_{filtname1}",
+    df_filt1 = df1.rename(columns={"detection_photon_rates1": f"detection_photon_rates_{filtname1}",
+                                   "detection_SNRs_original1": f"detection_SNRs_{filtname1}", 
+                                   "L_detections1": f"L_detections_{filtname1}",
+                                   "L_group_options1": f"L_group_options_{filtname1}",
+                                   'L_orbit1': f"L_orbit_{filtname1}", 
+                                   "L_partition1": f"L_partition_{filtname1}",
+                                   "L_partition_list1": f"L_partition_list_{filtname1}",
+                                   "ranking1": f"ranking_{filtname1}",
+                                   "top_ranked_partition1": f"top_ranked_partition_{filtname1}",
                                    "best_a": f"best_a_{filtname1}",
                                    "best_e": f"best_e_{filtname1}",
                                    "best_i": f"best_i_{filtname1}",
@@ -446,13 +455,15 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
                                    "best_e_count": f"best_e_count_{filtname1}",
                                    "best_i_count": f"best_i_count{filtname1}"})
     
-    df_filt2 = df2.rename(columns={"L_detections": f"L_detections_{filtname2}",
-                                   "L_group_options": f"L_group_options_{filtname2}",
-                                   'L_orbit': f"L_orbit_{filtname2}", 
-                                   "L_partition": f"L_partition_{filtname2}",
-                                   "L_partition_list": f"L_partition_list_{filtname2}",
-                                   "ranking": f"ranking_{filtname2}",
-                                   "top_ranked_partition": f"top_ranked_partition_{filtname2}",
+    df_filt2 = df2.rename(columns={"detection_photon_rates1": f"detection_photon_rates_{filtname2}",
+                                   "detection_SNRs_original1": f"detection_SNRs_{filtname2}", 
+                                   "L_detections1": f"L_detections_{filtname2}",
+                                   "L_group_options1": f"L_group_options_{filtname2}",
+                                   'L_orbit1': f"L_orbit_{filtname2}", 
+                                   "L_partition1": f"L_partition_{filtname2}",
+                                   "L_partition_list1": f"L_partition_list_{filtname2}",
+                                   "ranking1": f"ranking_{filtname2}",
+                                   "top_ranked_partition1": f"top_ranked_partition_{filtname2}",
                                    "best_a": f"best_a_{filtname2}",
                                    "best_e": f"best_e_{filtname2}",
                                    "best_i": f"best_i_{filtname2}",
@@ -460,13 +471,15 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
                                    "best_e_count": f"best_e_count_{filtname2}",
                                    "best_i_count": f"best_i_count{filtname2}"})
     
-    df_filt3 = df3.rename(columns={"L_detections": f"L_detections_{filtname3}",
-                                   "L_group_options": f"L_group_options_{filtname3}",
-                                   'L_orbit': f"L_orbit_{filtname3}", 
-                                   "L_partition": f"L_partition_{filtname3}",
-                                   "L_partition_list": f"L_partition_list_{filtname3}",
-                                   "ranking": f"ranking_{filtname3}",
-                                   "top_ranked_partition": f"top_ranked_partition_{filtname3}",
+    df_filt3 = df3.rename(columns={"detection_photon_rates1": f"detection_photon_rates_{filtname3}",
+                                   "detection_SNRs_original1": f"detection_SNRs_{filtname3}", 
+                                   "L_detections1": f"L_detections_{filtname3}",
+                                   "L_group_options1": f"L_group_options_{filtname3}",
+                                   'L_orbit1': f"L_orbit_{filtname3}", 
+                                   "L_partition1": f"L_partition_{filtname3}",
+                                   "L_partition_list1": f"L_partition_list_{filtname3}",
+                                   "ranking1": f"ranking_{filtname3}",
+                                   "top_ranked_partition1": f"top_ranked_partition_{filtname3}",
                                    "best_a": f"best_a_{filtname3}",
                                    "best_e": f"best_e_{filtname3}",
                                    "best_i": f"best_i_{filtname3}",
@@ -475,19 +488,19 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
                                    "best_i_count": f"best_i_count{filtname3}"})
 
     # Drop duplicate columns
-    cols2drop = ['system_original', 'n_planets_original', 'planet_original', \
-                 'planet_type_original', 'n_orbit_options_original', 'a_original', \
-                 'e_original', 'i_original', 'o_original', 'O_original', 'M0_original', \
-                 'ts', 'xyzs', 'correct_partition', 'noisy_detections', \
-                 'detection_photon_rates', 'detection_SNRs_original', 'id_top_orbit_in_group_original', \
-                 'top_a_original', 'top_e_original', 'top_i_original', 'top_o_original', \
-                 'top_O_original', 'top_M0_original', 'planet_type', 'a', 'e', 'i', 'o', \
-                 'O', 'M0', 'top_partitions', 'partition', 'group', 'detection_SNRs', \
-                 'id_top_orbit_in_group', 'top_a', 'top_e', 'top_i', 'top_o', 'top_O', \
-                 'top_M0', 'a_%diff', 'e_%diff', 'i_%diff', 'o_%diff', 'O_%diff', 'M0_%diff']
+    cols2drop = ['system_original1', 'n_planets_original1', 'planet_original1', \
+                 'planet_type_original1', 'n_orbit_options_original1', 'a_original1', \
+                 'e_original1', 'i_original1', 'o_original1', 'O_original1', 'M0_original1', \
+                 'ts1', 'correct_partition1', 'noisy_detections1', \
+                 'id_top_orbit_in_group_original1', \
+                 'top_a_original1', 'top_e_original1', 'top_i_original1', 'top_o_original1', \
+                 'top_O_original1', 'top_M0_original1', 'planet_type1', 'a1', 'e1', 'i1', 'o1', \
+                 'O1', 'M01', 'top_partitions1', 'partition1', 'group1', 'detection_SNRs1', \
+                 'id_top_orbit_in_group1', 'top_a1', 'top_e1', 'top_i1', 'top_o1', 'top_O1', \
+                 'top_M01', 'a_%diff', 'e_%diff', 'i_%diff', 'o_%diff', 'O_%diff', 'M0_%diff']
     df_filt1_reduced = df_filt1.drop(columns=cols2drop)
-    df_filt2_reduced = df_filt2[["system_original", "planet_original", "a_original", \
-                                  f"L_detections_{filtname2}", f"L_group_options_{filtname2}", \
+    df_filt2_reduced = df_filt2[[f"detection_photon_rates_{filtname2}", f"detection_SNRs_{filtname2}", \
+                                 f"L_detections_{filtname2}", f"L_group_options_{filtname2}", \
                                  f"L_orbit_{filtname2}", f"L_partition_{filtname2}", \
                                     f"L_partition_list_{filtname2}", f"ranking_{filtname2}", \
                                         f"top_ranked_partition_{filtname2}", f"best_a_{filtname2}", \
@@ -496,7 +509,7 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
                                                     f"best_e_count_{filtname2}", \
                                                         f"best_i_count{filtname2}"]]
     
-    df_filt3_reduced = df_filt3[["system_original", "planet_original", "a_original", \
+    df_filt3_reduced = df_filt3[[f"detection_photon_rates_{filtname3}", f"detection_SNRs_{filtname3}", \
                                  f"L_detections_{filtname3}", f"L_group_options_{filtname3}", \
                                  f"L_orbit_{filtname3}", f"L_partition_{filtname3}", \
                                     f"L_partition_list_{filtname3}", f"ranking_{filtname3}", \
@@ -507,16 +520,54 @@ def combine_filter_dfs(df1, df2, df3, filtname1, filtname2, filtname3):
                                                         f"best_i_count{filtname3}"]]
     
     # Concatenate dfs
-    df_merged = df_filt1.merge(df_filt2_reduced, on=['system_original', 'planet_original', 'a_original'], suffixes=('', '_dup'),
-                               how='inner').merge(df_filt3_reduced, on=['system_original', 'planet_original', 'a_original'],
-                                                  suffixes=('', '_dup2'), how='inner')
-    # Drop duplicate cols
-    df_merged = df_merged.loc[:, ~df_merged.columns.duplicated()]
+    df_merged = pd.concat([df_filt1, df_filt2_reduced], axis=1)
+    df_merged = pd.concat([df_merged, df_filt3_reduced], axis=1)
 
-    return df_merged
+    # Drop "original" and "1" from col headers
+    df_merged_renamed = df_merged.rename(columns={col: f"{col[:-1]}" for col in df_merged.columns if '1' in col})
+    df_merged_renamed = df_merged_renamed.rename(columns={col: f"{col.replace('_original', '')}" for col in df_merged_renamed if "_original" in col})
+
+    return df_merged_renamed
 
 def save_df(df, filename, sep=','):
     '''
     Save dataframe to filename (full path)
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataframe to save
+    filename : string
+        Full path to save datafrae
     '''
     df.to_csv(filename, sep=sep, index=None, header=True)
+
+def merge_ranked_true(df_true, df_ranked):
+    """
+    Merge true system parameters with ranked dataframe.
+
+    Parameters
+    ----------
+    df_true : pandas.DataFrame
+        Dataframe containing true system values. Should contain the following
+        headers: [system, planet, a, e, i, o, O, M0]
+    df_ranked : pandas.DataFrame
+        Dataframe containing ranked systems. Header suffixes should be "_original"
+
+    Returns
+    -------
+    pandas.DataFrame
+        Merged dataframe with true system values in each row
+    """
+    # Rename df_true columns to match the df_ranked convention
+    # df_true_renamed = df_true.rename(columns={'system': "system_original", 'planet': 'planet_original'})# if col not in ['system', 'planet']})
+
+    # Merge on system and planet
+    # df_merged = df_ranked.merge(df_true_renamed, on=['system_original', 'planet_original'], how='left', suffixes=('', '_true'))
+    df_merged = df_ranked.merge(df_true, on=['system', 'planet'], how='left', suffixes=('', '_true'))
+    # Remove weird column headers
+    cols2drop = ['planet_type.1', 'a.1', 'e.1', 'i.1', 'o.1', 'O.1', 'M0.1', \
+                 'top_a.1', 'top_e.1', 'top_i.1', 'top_o.1', 'top_O.1', 'top_M0.1']
+    df_merged = df_merged.drop(columns=cols2drop)
+    
+    return df_merged
