@@ -266,7 +266,7 @@ class Planet:
 
         # Choose a random planet type to assign 
         if assign_type_by_sep:
-            if self.a > 2.0 and 'rocky' in planet_types: # don't assign rocky to planets outside 2 AU
+            if self.a > 3.0 and 'rocky' in planet_types: # don't assign rocky to planets outside 2 AU
                 planet_types.remove("rocky")
         type = np.random.choice(planet_types)
         self.type = type
@@ -984,14 +984,16 @@ def get_count_rate_from_spectrum(Planet, Star, Detector, xs, ys, zs, filter_name
     if get_new_albedo_spec:
         get_alb_spectra(Planet, spectrum_dir=spectrum_dir)
 
-    # ---- Calculate stellar contribution -----
-    try: 
-        Star.blackbody_spec(Planet.wavelength[0])
-    except:
-        print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength scalar")
-        Star.blackbody_spec(wavelength=Detector.wavelength)
+
 
     for detection in range(0, len(xs[0])):
+        # ---- Calculate stellar contribution -----
+        try: # do for each detection so wavelength arrays match
+            Star.blackbody_spec(Planet.wavelength[detection])
+        except:
+            print("AttributeError: 'Planet' object has no attribute 'wavelength' for Star.blackbody_spec. Using Detector.wavelength scalar")
+            Star.blackbody_spec(wavelength=Detector.wavelength)
+
         # --------- Planet flux density & flux ratio ---------
         if use_lambert_phase:
             F_planet = np.pi * Planet.Ag * phase_function[detection] * Star.B_star * (Star.R_star / (separation[detection].to(u.m)))**2 * (Planet.R_p / d_system)**2 

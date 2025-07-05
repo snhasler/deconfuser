@@ -7,7 +7,7 @@ Class for plotting with the deconfusion + photometry work.
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
-sys.path.append('../') # TODO: remove later -- place plotting.py in deconfuser code structure
+sys.path.append('../') 
 import deconfuser.sample_planets as sample_planets
 from matplotlib.ticker import AutoMinorLocator
 
@@ -66,7 +66,7 @@ class Plotting:
         for index, row in coords_df.iterrows():
             xyzs = eval(row['xyzs']) # convert string to list
             for detection in range(len(xyzs)):
-                plt.scatter(xyzs[detection][0], xyzs[detection][1], marker=self.markers[detection],
+                ax.scatter(xyzs[detection][0], xyzs[detection][1], marker=self.markers[detection],
                         color='k', s=100, label=f'epoch #{detection+1}' if i == 0 else "") # plots each detection with different shape
             i += 1
             
@@ -80,21 +80,21 @@ class Plotting:
                                                                             2*np.pi*np.sqrt(eval(row['a'])**3/self.mu)*np.arange(0,1.1,0.01), 
                                                                             self.mu)
                 # Plot orbit track
-                plt.plot(xs_more[0], ys_more[0], linewidth=2, color='k')
+                ax.plot(xs_more[0], ys_more[0], linewidth=2, color='k')
         # Get inclination value
         inc = np.rad2deg(float(params_df['i'].values[0]))
                 
-        plt.scatter(0, 0, marker='*', color='gold', s=150)
+        ax.scatter(0, 0, marker='*', color='gold', s=150)
         if plot_legend:
             plt.legend(bbox_to_anchor=legend_bbox_anchor, ncols=legend_ncol)#loc='upper left', framealpha=0.4)#bbox_to_anchor=(1.0,1.0))
-        plt.xlabel('x (AU)')
-        plt.ylabel('y (AU)')
-        plt.xlim(xlim)
-        plt.ylim(ylim)
+        ax.set_xlabel('x (AU)')
+        ax.set_ylabel('y (AU)')
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
         if plot_title:
-            plt.title(f'System detections (System #{self.system_number})')
+            ax.set_title(f'System detections (System #{self.system_number})')
         if title_with_i:
-            plt.title(f"{title_with_i}, i = {inc:.2f}°")
+            ax.set_title(f"{title_with_i}, i = {inc:.2f}°")
         if save_plot:
             plt.savefig(save_path, dpi='figure', bbox_inches='tight')
         plt.show()
@@ -116,10 +116,10 @@ class Plotting:
         system_df = self.df_all[(self.df_all.system == self.system_number) & (self.df_all.n_orbit_options.isnull())]
         confused_system_df = confused_options_df[(confused_options_df.system == self.system_number) & 
                                                 (confused_options_df.n_orbit_options != 0)] # check n_orbit_options != 0 -- why are there zero options being output?
-        
+
         # get unique partitions
         confused_partitions = confused_system_df['partition'].unique()
-        
+
         # iterate over top partitions
         for partition in confused_partitions: 
             i = 0 # for labeling detections      
@@ -129,7 +129,7 @@ class Plotting:
                 facecolor = 'white'  
             fig, ax = plt.subplots(facecolor=facecolor) # reset figure
             partition_df = confused_system_df[(confused_system_df.partition == partition)] # gets df of only partition being iterated over
-            
+
             # plot system detections
             for index, row in system_df.iterrows():
                 xyzs = eval(row['xyzs']) # convert str to list
@@ -213,7 +213,8 @@ class Plotting:
         plt.title(f'Top ranked partition (System #{self.system_number})\nL={L_partition:.3e}')
         plt.show()
 
-    def compare_top_to_true(self, top_ranked_df, save_plot=False, save_path=None, xlim=None, ylim=None, plot_legend=True, plot_title=True):
+    def compare_top_to_true(self, top_ranked_df, save_plot=False, save_path=None, xlim=None, ylim=None, plot_legend=True, plot_title=True,
+                            multiband=False, filter_key=None):
         '''
         Function to plot top ranked orbit options on top of detections and true orbits for system number of interest.
         Accepts dataframe of top ranked options (output of top_ranked_partition) from the deconfuser.
@@ -224,10 +225,16 @@ class Plotting:
             Dataframe of output with partitions ranked (from top_ranked_partition function)
 
         '''
+        # If this is for the dataframes with all filters, choose which filter you're looking at first
+        if multiband:
+            top_ranked_keyword = f"top_ranked_partition_{filter_key}"
+        else:
+            top_ranked_keyword = "top_ranked_partition"
+
         # get dfs for system number of interest
         system_df = self.df_all[(self.df_all.system == self.system_number) & (self.df_all.n_orbit_options.isnull())]
         top_partition_df = top_ranked_df[(top_ranked_df.system == self.system_number) & 
-                                                (top_ranked_df.top_ranked_partition == True)]
+                                                (top_ranked_df[top_ranked_keyword] == True)]
         i = 0 # for labeling plot
         j = 0
         plt.figure()
@@ -250,13 +257,11 @@ class Plotting:
                                                                         float(row['top_O']), float(row['top_M0']),
                                                                         2*np.pi*np.sqrt(float(row['top_a'])**3/self.mu)*np.arange(0,1,0.01), 
                                                                         self.mu)
-
             plt.plot(xs_more[0], ys_more[0], linewidth=3, alpha=0.9, linestyle='--', color=self.colors[j], 
                      label=f"$a_{j+1}$={row['top_a']:.2f} AU\n$e_{j+1}$={row['top_e']:.2f}\n$i_{j+1}$={np.rad2deg(float(row['top_i'])):.2f}°\nL={row['L_orbit']:.4f}")  
             
             j += 1 
             
-                
         plt.scatter(0, 0, marker='*', color='gold', s=150)
         if plot_legend:
             plt.legend(bbox_to_anchor=(1.05,-0.15), ncols=3)
@@ -403,7 +408,7 @@ class Plotting:
 
 
     def iterate_over_all_partitions(self, df_confused, save_plot=False, save_path=None, xlims=None, ylims=None,
-                                plot_title=True, L_in_title=False, inc_group_for_title=None):
+                                plot_title=True, L_in_title=False, inc_group_for_title=None, multiband=False, filternames=None):
         '''
         Iterate over all confused orbit options in a dataframe and plot all orbit tracks.
 
@@ -425,6 +430,10 @@ class Plotting:
             Whether or not to list the system likelihood in the title, by default False
         inc_group_for_title : str, optional
             Extra string to add to title (), by default None
+        multiband : bool, optional 
+            Whether or not we're plotting multiband liklihoods here.
+        filternames : list of strings, optional
+            Names of filters if this is a multiband plot -- used for pulling band-specific likelihoods
         '''
         
         system_numbers = self.df_all['system'].unique() # get systems in dataframe
@@ -448,8 +457,15 @@ class Plotting:
                 i = 0 # for labeling detections
                 fig, ax = plt.subplots() # reset figure
                 partition_df = confused_system_df[(confused_system_df.partition == partition)] # gets df of only partition being iterated over
-                print('L_orbit: ', partition_df['L_orbit'].values)
-                L_partition = np.prod(partition_df['L_orbit'].values)
+                
+                if multiband:
+                    for filt in filternames:
+                        print(f'L_orbit_{filt}: ', partition_df[f'L_orbit_{filt}'].values)
+                        L_partition = np.prod(partition_df[f'L_orbit_{filt}'].values)
+                        print(f"L_partition_{filt}: ", L_partition)
+                else:
+                    print('L_orbit: ', partition_df['L_orbit'].values)
+                    L_partition = np.prod(partition_df['L_orbit'].values)
 
                 # Plot system detections
                 for index, row in system_df.iterrows():
@@ -481,7 +497,10 @@ class Plotting:
                 plt.legend(bbox_to_anchor=(1.05,-0.15), ncols=3)
                 if plot_title:
                     if L_in_title:
-                        plt.title(f'System {system}\nPossible Orbits #{i_title+1} (L={L_partition:.3e})')
+                        if multiband:
+                            plt.title(f'System {system}\nPossible Orbits #{i_title+1} (L_{filt}={L_partition:.3e})')
+                        else:
+                            plt.title(f'System {system}\nPossible Orbits #{i_title+1} (L={L_partition:.3e})')
                     else:
                         system_title = system
                         if system == 11:
