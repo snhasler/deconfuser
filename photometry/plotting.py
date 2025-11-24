@@ -44,7 +44,7 @@ class Plotting:
         self.colors = colors 
 
     def system_detections(self, plot_tracks=True, save_plot=False, save_path=None, xlim=None, ylim=None, plot_title=True, title_with_i=None,
-                          legend_bbox_anchor=None, legend_ncol=1, plot_legend=True):
+                          legend_bbox_anchor=None, legend_ncol=1, plot_legend=True, save_fig_as='png'):
         '''
         Function to plot system detections for system number of interest.
         Plots detections for system number of interest. 
@@ -96,7 +96,7 @@ class Plotting:
         if title_with_i:
             ax.set_title(f"{title_with_i}, i = {inc:.2f}°")
         if save_plot:
-            plt.savefig(save_path, dpi='figure', bbox_inches='tight')
+            plt.savefig(save_path, dpi='figure', bbox_inches='tight', format=save_fig_as)
         plt.show()
 
 
