@@ -260,7 +260,7 @@ class PhotometryRanking:
             # For each confused option, compare the orbital parameters to the planet with the
             # corresponding number in the simulated system
             for index, row in df_confused.iterrows():
-                planet_number = row['planet_original']
+                planet_number = int(row['planet_original'])
 
                 # Compare each parameter
                 sim_a = float(simulated_system.planets[planet_number-1].a)
