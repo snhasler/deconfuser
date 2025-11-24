@@ -9,8 +9,9 @@ Likelihood function for use in photometry deconfusion
 import numpy as np
 import deconfuser.sample_planets as sample_planets
 import photometry.photometry as phot
+import matplotlib.pyplot as plt # TODO: remove
 
-def likelihood(parameter, observed_sample, Detector, nbins=20): 
+def likelihood(parameter, observed_sample, Detector, nbins=20, dist_size=1e5): 
     '''
     Function to calculate likelihood of observed sample given the parameter value. 
     https://en.wikipedia.org/wiki/Likelihood_function#Definition
@@ -29,7 +30,7 @@ def likelihood(parameter, observed_sample, Detector, nbins=20):
         L : float
             likelihood of parameter given observed sample
     '''
-    dist = np.asarray(Detector.noise_distribution(parameter)) # generate distribution of possible options
+    dist = np.asarray(Detector.noise_distribution(parameter, dist_size=dist_size)) # generate distribution of possible options
     hist = np.histogram(dist, nbins)                          # histogram of distribution
     bin_edges = hist[1][:-1]                                  # bin edges of histogram [e- counts]
     # normalize distribution to get estimated pdf
@@ -43,7 +44,24 @@ def likelihood(parameter, observed_sample, Detector, nbins=20):
     diff_arr = np.absolute(bin_edges - observed_sample) # find nearest location to noisy count
     id_nearest = diff_arr.argmin()                      # get index of nearest value
     L = updated_pdf[id_nearest]                         # L of observed_sample
-    L = L * bin_width[0]                                # rescale likelihood to bin width of histogram  
+                                  # rescale likelihood to bin width of histogram  
+
+    # TODO: remove plotting
+    # plt.figure()
+    # # Plot the PDF
+    # plt.plot(bin_edges, updated_pdf)
+    # # Plot vertical line at observed_sample
+    # plt.axvline(observed_sample, color='red', linestyle='--', label=f'L={L:2e}')
+    # plt.title(f'Predicted rate: {parameter:2e}, Observed: {observed_sample:2e}')
+    # plt.xlabel('e-')
+    # plt.ylabel('PDF')   
+
+    L = L * bin_width[0]  
+
+    # plt.legend(title=f'L rescaled: {L:2e}')
+    # plt.tight_layout()
+    # plt.show()
+
 
     return L
 
