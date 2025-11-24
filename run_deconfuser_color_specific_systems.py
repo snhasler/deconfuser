@@ -41,7 +41,8 @@ min_i = 0.0 # rad
 max_i = 1.5707963267948966 # rad
 spread_i_O = 0.0 # spread of inclination and LAN in radians
 
-ranking_path = "/Users/shasler/Code/deconfuser/output_files/ranking_files/"
+# ranking_path = "/Users/shasler/Code/deconfuser/output_files/ranking_files/"
+ranking_path = "/Users/shasler/Code/deconfuser/output_files/ten_systems_color_paper/take2/ranking_files/"
 # signal-dependent uncertianty parameters
 SNR_lower_lim = 2.0
 # TODO: Change sigma_lim depending on planet type/distance
@@ -64,7 +65,7 @@ else:
 # Set up base system parameters
 star = phot.Star(T=5800, R_star=695700e3, d_system=10, mu=mu) # system distance in parsecs -- values for the Sun
 detector = phot.Detector(qe=0.9, cic=0.016, dark_current=1.39e-5, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-                   fwc=80000, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039, # throughput=0.38, f_pa=0.039,
+                   fwc=10e12, conversion_gain=1.0, t=3600, D=2.36, throughput=0.38, f_pa=0.039, # throughput=0.38, f_pa=0.039,
                    wavelength=575e-9, bandwidth=8e-9)
 
 # Set filter files
@@ -82,7 +83,8 @@ detector.add_filter_info(Ifilter_file, "I", lambda_units=u.Angstrom)
 
 # -------- Create text file for each filter and log file for all output --------
 writers, files = {}, {}
-path = "/Users/shasler/Code/deconfuser/output_files/"
+# path = "/Users/shasler/Code/deconfuser/output_files/"
+path = "/Users/shasler/Code/deconfuser/output_files/ten_systems_color_paper/take2/"
 output_file = f"test_deconfuser_output_{now}_{n_systems}systems_{inc_group}"
 
 # Headers and run parameters to write to output file  
@@ -161,11 +163,6 @@ for _ in range(n_systems):
             planet_types = ['ice_giant']
         if n == 2:
             planet_types = ['rocky']
-            # planet_types = ['gas_giant']
-        # if n == 3:
-        #     planet_types = ['rocky']
-        # else:
-        #     planet_types = ['rocky', 'ice_giant', 'gas_giant']
 
         planet = phot.Planet() # initialize planet object
         planet.add_orb_params(a_vals[n], e_vals[n], i_vals[n], o_vals[n], O_vals[n], M0_vals[n]) # add orb parameters to planet

@@ -80,15 +80,15 @@ writer.writerow([run_parameters]) # save run parameters in file
 writer.writerow(headers)          # add headers to file
 
 # Set up planet, star, and detector parameters for photometry
-system = phot.System(n_exozodi=0.2/3600, n_leakage=20/3600, n_zodi=2/3600) # exozodi = 4/hr at 1AU sep -- background count contributions in units of s^-1
+system = phot.System(n_exozodi=0.0/3600, n_leakage=0.0/3600, n_zodi=0.0/3600) # exozodi = 4/hr at 1AU sep -- background count contributions in units of s^-1
 star = phot.Star(T=5800, R_star=695700e3, d_system=10, mu=mu_sun) # system distance in parsecs -- values for the Sun
 planet = phot.Planet(R_p=69911e3, Ag=0.5)                        # Rp = 6.371e6 km, Ag=0.3 -- values for Earth
 # detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, 
 #                     fwc=80000, conversion_gain=1.0, t=30*3600, D=6, throughput=0.05, f_pa=0.87,
 #                     wavelength=573.8e-9, bandwidth=56.5e-9) 
 detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-                   fwc=80000, conversion_gain=1.0, t=3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-                   wavelength=575e-9, bandwidth=50e-9)
+                   fwc=80000, conversion_gain=1.0, t=3600, D=2.4, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                   wavelength=575e-9, bandwidth=56.5e-9)
 
 # Observation epochs (years)
 ts = args.cadence*np.arange(args.n_epochs)
@@ -346,6 +346,7 @@ SNR = [item for sublist in all_SNRs for item in sublist for item in item] # rear
 phases = np.abs([item for sublist in all_phases for item in sublist for item in item]) # rearrange
 sigmas = [item for sublist in all_sigma for item in sublist for item in item]
 
+
 sorted_phases, sorted_SNR, sorted_sigmas = zip(*sorted(zip(phases, SNR, sigmas))) # sort for plotting
 sorted_SNR = list(sorted_SNR) # convert to list
 sorted_sigmas = list(sorted_sigmas)
@@ -376,7 +377,7 @@ ax2.legend(loc='upper right')
 fig3 = ax3.scatter(phases, SNR, c=phases, cmap='plasma_r', marker='o', s=50)
 cbar3 = fig.colorbar(fig3, ax=ax3)
 cbar3.ax.set_ylabel('Phase Angle')
-ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
+# ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
 # ax3.scatter(90, 5, c='k', marker='*', s=75, label='Robinson+2016')
 ax3.set_xlabel('Phase angle (°)')
 ax3.set_ylabel('SNR')

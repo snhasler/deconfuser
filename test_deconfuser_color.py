@@ -59,8 +59,8 @@ args = parser.parse_args()
 # Set up base system parameters
 star = phot.Star(T=5800, R_star=695700e3, d_system=10, mu=args.mu) # system distance in parsecs -- values for the Sun
 detector = phot.Detector(qe=0.9, cic=0.016, dark_current=5e-4, read_noise=120, gain=1000, # qe=0.837, dark_current=1.3e-4, read_noise=120
-                   fwc=1e10, conversion_gain=1.0, t=10*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
-                   wavelength=575e-9, bandwidth=80e-9)
+                   fwc=1e10, conversion_gain=1.0, t=20*3600, D=2, throughput=0.05, f_pa=0.87, # throughput=0.38, f_pa=0.039,
+                   wavelength=550e-9, bandwidth=8e-9)
 
 # ------------ Filter information ------------
 n_filters = 3 # number of filters
@@ -406,49 +406,49 @@ print('Output written to: output_files/')
 print([f for f in files])
 print(" & " + args.ranking_path)
 
-# # Plot phases/SNR after this finishes
-# SNR = [item for sublist in all_SNRs for item in sublist for item in item] # rearrange
-# phases = np.abs([item for sublist in all_phases for item in sublist for item in item]) # rearrange
-# sigmas = [item for sublist in all_sigma for item in sublist for item in item]
+# Plot phases/SNR after this finishes
+SNR = [item for sublist in all_SNRs for item in sublist for item in item] # rearrange
+phases = np.abs([item for sublist in all_phases for item in sublist for item in item]) # rearrange
+sigmas = [item for sublist in all_sigma for item in sublist for item in item]
 
-# sorted_phases, sorted_SNR, sorted_sigmas = zip(*sorted(zip(phases, SNR, sigmas))) # sort for plotting
-# sorted_SNR = list(sorted_SNR) # convert to list
-# sorted_sigmas = list(sorted_sigmas)
+sorted_phases, sorted_SNR, sorted_sigmas = zip(*sorted(zip(phases, SNR, sigmas))) # sort for plotting
+sorted_SNR = list(sorted_SNR) # convert to list
+sorted_sigmas = list(sorted_sigmas)
 
-# # plot
-# fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18,6))
-# # uncertainty as function of phase angle plot
-# fig1 = ax1.scatter(phases, sigmas, c=SNR, cmap='plasma', marker='o', s=50)
-# cbar1 = fig.colorbar(fig1, ax=ax1)
-# cbar1.ax.set_ylabel('SNR')
-# ax1.set_xlabel('Phase angle (°)')
-# ax1.set_ylabel('$\sigma$ (uncertainty) (AU)')
-# ax1.set_title('uncertainty vs. phase angle')
+# plot
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18,6))
+# uncertainty as function of phase angle plot
+fig1 = ax1.scatter(phases, sigmas, c=SNR, cmap='plasma', marker='o', s=50)
+cbar1 = fig.colorbar(fig1, ax=ax1)
+cbar1.ax.set_ylabel('SNR')
+ax1.set_xlabel('Phase angle (°)')
+ax1.set_ylabel('$\sigma$ (uncertainty) (AU)')
+ax1.set_title('uncertainty vs. phase angle')
 
-# # ax1.set_ylim([-0.05,2])
+# ax1.set_ylim([-0.05,2])
 
-# # Uncertainty as function of SNR plot
-# ax2.scatter(SNR, sigmas, c=phases, cmap='plasma_r', marker='o', s=50)
-# ax2.vlines(2, 0, np.max(sigmas), color='k', alpha=0.5, linestyle='dashed', label='SNR = 2') 
-# ax2.set_xlabel('SNR')
-# ax2.set_ylabel('$\sigma$ (uncertainty) (AU)')
-# ax2.set_title('uncertainty vs. SNR')
-# ax2.legend(loc='upper right')
-# # ax2.set_ylim([-0.05,2])
-# # ax2.set_xlim(([-0.05,5]))
+# Uncertainty as function of SNR plot
+ax2.scatter(SNR, sigmas, c=phases, cmap='plasma_r', marker='o', s=50)
+ax2.vlines(2, 0, np.max(sigmas), color='k', alpha=0.5, linestyle='dashed', label='SNR = 2') 
+ax2.set_xlabel('SNR')
+ax2.set_ylabel('$\sigma$ (uncertainty) (AU)')
+ax2.set_title('uncertainty vs. SNR')
+ax2.legend(loc='upper right')
+# ax2.set_ylim([-0.05,2])
+# ax2.set_xlim(([-0.05,5]))
 
-# # SNR as function of phase angle plot
-# fig3 = ax3.scatter(phases, SNR, c=phases, cmap='plasma_r', marker='o', s=50)
-# cbar3 = fig.colorbar(fig3, ax=ax3)
-# cbar3.ax.set_ylabel('Phase Angle')
-# ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
-# # ax3.scatter(90, 5, c='k', marker='*', s=75, label='Robinson+2016')
-# ax3.set_xlabel('Phase angle (°)')
-# ax3.set_ylabel('SNR')
-# ax3.set_title('SNR vs. phase angle')
-# # ax3.set_ylim([-0.05,15])
-# # ax3.legend(loc='upper right', fontsize=14, framealpha=0.4)
+# SNR as function of phase angle plot
+fig3 = ax3.scatter(phases, SNR, c=phases, cmap='plasma_r', marker='o', s=50)
+cbar3 = fig.colorbar(fig3, ax=ax3)
+cbar3.ax.set_ylabel('Phase Angle')
+ax3.hlines(2, 0, 180, color='k', alpha=0.5, linestyle='dashed') # where SNR uncertainty cutoff is at line 157
+# ax3.scatter(90, 5, c='k', marker='*', s=75, label='Robinson+2016')
+ax3.set_xlabel('Phase angle (°)')
+ax3.set_ylabel('SNR')
+ax3.set_title('SNR vs. phase angle')
+# ax3.set_ylim([-0.05,15])
+# ax3.legend(loc='upper right', fontsize=14, framealpha=0.4)
 
-# plt.tight_layout()
-# plt.savefig('/Users/shasler/Desktop/SNR_phases_uncertainty.png', bbox_inches='tight', dpi='figure')
-# plt.show()
+plt.tight_layout()
+plt.savefig('/Users/shasler/Desktop/SNR_phases_uncertainty.png', bbox_inches='tight', dpi='figure')
+plt.show()
