@@ -46,7 +46,7 @@ for _ in range(args.n_systems):
     a,e,i,o,O,M0 = sample_planets.random_planet_elements(args.n_planets, args.min_a, args.max_a, args.max_e, args.sep_a, args.min_i, args.max_i, args.spread_i_O)
  
     #get coordinates of planets when observed
-    xs,ys = sample_planets.get_observations(a, e, i, o, O, M0, ts, args.mu)
+    xs,ys,zs = sample_planets.get_observations(a, e, i, o, O, M0, ts, args.mu)
     observations = np.stack([xs,ys], axis=2).reshape((-1,2))
 
     #add radially bounded astrometry error
