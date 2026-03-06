@@ -140,16 +140,6 @@ for _ in range(args.n_systems):
     observations[:,0] += noise_r*np.cos(noise_a) # x-direction error 
     observations[:,1] += noise_r*np.sin(noise_a) # y-direction error 
 
-    # ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, color='k', label='Original position') # TODO: remove
-    # ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, color='k') # TODO: remove
-    # ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, color='k') # TODO: remove
-    # ax.plot(obs_more[:,0][:t_range], obs_more[:,1][:t_range], color='k', alpha=0.7)
-    # ax.plot(obs_more[:,0][t_range:t_range*2], obs_more[:,1][t_range:t_range*2], color='k', alpha=0.7)
-    # ax.plot(obs_more[:,0][t_range*2:], obs_more[:,1][t_range*2:], color='k', alpha=0.7)
-    # xs_original = observations[:,0].flatten()
-    # print('xs_original: ', xs_original)
-    # ys_original = observations[:,1].flatten()
-
     # Calculate photometry of simulated system (these are your "observations")
     all_coords = [] 
     for ip in range(args.n_planets):
@@ -169,27 +159,6 @@ for _ in range(args.n_systems):
         # Add uncertainty to coordinates as gaussian with standard deviation of sigma
         observations[:,0] = np.random.normal(observations[:,0], sigma_AU.flatten())
         observations[:,1] = np.random.normal(observations[:,1], sigma_AU.flatten())
-
-    #     # TODO: remove plotting
-    #     ax.scatter(observations[:,0][:3], observations[:,1][:3], marker='o', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1, alpha=0.5, label='With signal-dependent error', zorder=3)
-    #     ax.scatter(observations[:,0][3:6], observations[:,1][3:6], marker='s', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1,  alpha=0.5, zorder=3)
-    #     ax.scatter(observations[:,0][6:], observations[:,1][6:], marker='^', s=50, edgecolor='r', facecolor='r', 
-    #                linewidth=1,  alpha=0.5, zorder=3) 
-
-    #     for xi, yi, zi in zip(xs_original, ys_original, sigma_AU.flatten()):
-    #         circle = Circle((xi, yi), zi*2, edgecolor='red', facecolor='none', lw=2, linestyle='dashed', alpha=0.9)
-    #         # zi*2 = 2-sigma uncertainty radius size
-    #         ax.add_patch(circle)
-
-    # ax.scatter(0, 0, marker='*', color='gold', s=100)
-    # ax.set_xlabel('x (AU)')
-    # ax.set_ylabel('y (AU)')
-    # ax.set_aspect('equal')
-    # plt.legend(bbox_to_anchor=(0.89, 1.25))
-    # # plt.title('Detections with vs. without\njoint astro/photo error')
-    # plt.show()
 
     if args.verbose:
         print("\nts =", list(ts)) 
@@ -212,7 +181,7 @@ for _ in range(args.n_systems):
     
     # -------------------- Do the orbit fitting --------------------
     # get all possible (full or partial) groupings of detection by orbits that fit them with the coarsest tolerance
-    groupings = orbit_grouper.group_orbits(observations, all_ts)
+    groupings = orbit_grouper.group_orbits(observations, all_ts) # THESE GROUPINGS SHOULD ONLY BE FIT WITHIN THE TOLERANCE -- group_orbits employs check_grouping, which checks for orbits within the tolerance
     print('groupings: ', groupings)
 
     # select only groupings that include all epochs (these will be most highly ranked, so no need to check the rest)
@@ -260,7 +229,11 @@ for _ in range(args.n_systems):
                     for err, parameters in orbit_fitter.fit(observations[group]): 
                         print('\nParameters: ', parameters)
                         print('err: ', err) # Added to return fit errors
-
+                        # TODO: check this err > tol section
+                        # if err > tolerances[j]: # only consider orbit options within the tolerance
+                        #     print("ERROR > TOLERANCE")
+                        #     continue
+                        # --------------------------------------
                         # Phase information section
                         # Phase info is buried in likelihood function -- add as a return parameter in likelihood.py if you want to back it out
                         # Calculate likelihood of orbit option
